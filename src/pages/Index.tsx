@@ -26,7 +26,8 @@ interface Election {
   voterRoles: string[];
   duration: number;
   registrationDuration: number;
-  minVotesThreshold: number;
+  minVotesThresholdPercent: number;
+  serverMemberCount: number;
   keepOldRoles: boolean;
   registrationEndDate?: string;
   endDate: string;
@@ -40,6 +41,8 @@ interface CandidateForm {
 }
 
 const Index = () => {
+  const [serverMemberCount, setServerMemberCount] = useState(250);
+
   const [elections, setElections] = useState<Election[]>([
     {
       id: '1',
@@ -48,9 +51,10 @@ const Index = () => {
       status: 'active',
       assignedRoles: ['@Модератор', '@Старший-Модератор'],
       voterRoles: ['@Участник', '@Проверенный'],
-      duration: 30,
-      registrationDuration: 7,
-      minVotesThreshold: 50,
+      duration: 720,
+      registrationDuration: 168,
+      minVotesThresholdPercent: 20,
+      serverMemberCount: 250,
       keepOldRoles: false,
       endDate: '2025-12-07',
       candidates: [
@@ -67,9 +71,10 @@ const Index = () => {
       status: 'active',
       assignedRoles: ['@Event-Master'],
       voterRoles: ['@Участник'],
-      duration: 14,
-      registrationDuration: 3,
-      minVotesThreshold: 30,
+      duration: 336,
+      registrationDuration: 72,
+      minVotesThresholdPercent: 15,
+      serverMemberCount: 250,
       keepOldRoles: true,
       endDate: '2025-11-21',
       candidates: [
@@ -85,9 +90,9 @@ const Index = () => {
     description: '',
     assignedRoles: [] as string[],
     voterRoles: [] as string[],
-    duration: 30,
-    registrationDuration: 7,
-    minVotesThreshold: 10,
+    duration: 720,
+    registrationDuration: 168,
+    minVotesThresholdPercent: 20,
     keepOldRoles: false
   });
 
@@ -172,9 +177,10 @@ const Index = () => {
       voterRoles: newElection.voterRoles,
       duration: newElection.duration,
       registrationDuration: newElection.registrationDuration,
-      minVotesThreshold: newElection.minVotesThreshold,
+      minVotesThresholdPercent: newElection.minVotesThresholdPercent,
+      serverMemberCount,
       keepOldRoles: newElection.keepOldRoles,
-      endDate: new Date(Date.now() + newElection.duration * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+      endDate: new Date(Date.now() + newElection.duration * 60 * 60 * 1000).toISOString(),
       candidates: [],
       totalVotes: 0
     };
@@ -185,9 +191,9 @@ const Index = () => {
       description: '', 
       assignedRoles: [], 
       voterRoles: [], 
-      duration: 30,
-      registrationDuration: 7,
-      minVotesThreshold: 10,
+      duration: 720,
+      registrationDuration: 168,
+      minVotesThresholdPercent: 20,
       keepOldRoles: false
     });
     
@@ -283,7 +289,7 @@ const Index = () => {
       return;
     }
 
-    const registrationEndDate = new Date(Date.now() + election.registrationDuration * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+    const registrationEndDate = new Date(Date.now() + election.registrationDuration * 60 * 60 * 1000).toISOString();
 
     setElections(prev => prev.map(e => 
       e.id === electionId 
@@ -291,7 +297,7 @@ const Index = () => {
             ...e, 
             status: 'registration' as const,
             registrationEndDate,
-            endDate: new Date(Date.now() + (election.registrationDuration + election.duration) * 24 * 60 * 60 * 1000).toISOString().split('T')[0]
+            endDate: new Date(Date.now() + (election.registrationDuration + election.duration) * 60 * 60 * 1000).toISOString()
           }
         : e
     ));
@@ -423,39 +429,40 @@ const Index = () => {
                     </h3>
                     
                     <div className="grid gap-2">
-                      <Label htmlFor="registrationDuration">Период регистрации кандидатов (дней)</Label>
+                      <Label htmlFor="registrationDuration">Период регистрации кандидатов (часов)</Label>
                       <Input
                         id="registrationDuration"
                         type="number"
                         min="1"
                         value={newElection.registrationDuration}
-                        onChange={(e) => setNewElection(prev => ({ ...prev, registrationDuration: parseInt(e.target.value) }))}
+                        onChange={(e) => setNewElection(prev => ({ ...prev, registrationDuration: parseInt(e.target.value) || 1 }))}
                       />
                       <p className="text-xs text-muted-foreground">Время для добавления кандидатов перед голосованием</p>
                     </div>
 
                     <div className="grid gap-2">
-                      <Label htmlFor="duration">Период голосования (дней)</Label>
+                      <Label htmlFor="duration">Период голосования (часов)</Label>
                       <Input
                         id="duration"
                         type="number"
                         min="1"
                         value={newElection.duration}
-                        onChange={(e) => setNewElection(prev => ({ ...prev, duration: parseInt(e.target.value) }))}
+                        onChange={(e) => setNewElection(prev => ({ ...prev, duration: parseInt(e.target.value) || 1 }))}
                       />
                       <p className="text-xs text-muted-foreground">Длительность активного голосования</p>
                     </div>
 
                     <div className="grid gap-2">
-                      <Label htmlFor="minVotesThreshold">Минимум голосов для признания состоявшимися</Label>
+                      <Label htmlFor="minVotesThresholdPercent">Минимум голосов от участников сервера (%)</Label>
                       <Input
-                        id="minVotesThreshold"
+                        id="minVotesThresholdPercent"
                         type="number"
                         min="1"
-                        value={newElection.minVotesThreshold}
-                        onChange={(e) => setNewElection(prev => ({ ...prev, minVotesThreshold: parseInt(e.target.value) }))}
+                        max="100"
+                        value={newElection.minVotesThresholdPercent}
+                        onChange={(e) => setNewElection(prev => ({ ...prev, minVotesThresholdPercent: parseInt(e.target.value) || 1 }))}
                       />
-                      <p className="text-xs text-muted-foreground">Если меньше голосов, выборы не состоятся</p>
+                      <p className="text-xs text-muted-foreground">Процент участников сервера (без ботов), которые должны проголосовать</p>
                     </div>
 
                     <div className="flex items-center justify-between">
@@ -525,12 +532,12 @@ const Index = () => {
                       )}
                       <div className="grid grid-cols-3 gap-2 text-sm">
                         <div className="flex items-center gap-1 text-muted-foreground">
-                          <Icon name="Calendar" size={14} />
-                          <span className="text-xs">До {election.endDate}</span>
+                          <Icon name="Clock" size={14} />
+                          <span className="text-xs">{Math.round(election.duration / 24)}д {election.duration % 24}ч</span>
                         </div>
                         <div className="flex items-center gap-1 text-muted-foreground">
                           <Icon name="BarChart3" size={14} />
-                          <span className="text-xs">{election.totalVotes} / {election.minVotesThreshold}</span>
+                          <span className="text-xs">{election.totalVotes} / {Math.ceil(election.serverMemberCount * election.minVotesThresholdPercent / 100)}</span>
                         </div>
                         <div className="flex items-center gap-1">
                           <Icon name={election.keepOldRoles ? "Shield" : "ShieldOff"} size={14} className={election.keepOldRoles ? "text-green-500" : "text-red-500"} />
@@ -540,14 +547,17 @@ const Index = () => {
                     </div>
                   </CardHeader>
                   <CardContent className="space-y-4">
-                    {election.totalVotes < election.minVotesThreshold && (
-                      <div className="flex items-center gap-2 p-3 bg-orange-500/10 border border-orange-500/20 rounded-lg">
-                        <Icon name="AlertCircle" size={16} className="text-orange-500" />
-                        <p className="text-sm text-orange-600 dark:text-orange-400">
-                          Нужно еще {election.minVotesThreshold - election.totalVotes} голосов для признания выборов состоявшимися
-                        </p>
-                      </div>
-                    )}
+                    {(() => {
+                      const requiredVotes = Math.ceil(election.serverMemberCount * election.minVotesThresholdPercent / 100);
+                      return election.totalVotes < requiredVotes && (
+                        <div className="flex items-center gap-2 p-3 bg-orange-500/10 border border-orange-500/20 rounded-lg">
+                          <Icon name="AlertCircle" size={16} className="text-orange-500" />
+                          <p className="text-sm text-orange-600 dark:text-orange-400">
+                            Нужно еще {requiredVotes - election.totalVotes} голосов для признания выборов состоявшимися ({election.minVotesThresholdPercent}% от {election.serverMemberCount} участников)
+                          </p>
+                        </div>
+                      );
+                    })()}
                     {election.candidates.map((candidate) => {
                       const percentage = election.totalVotes > 0 
                         ? Math.round((candidate.votes / election.totalVotes) * 100) 
@@ -625,21 +635,21 @@ const Index = () => {
                           <Icon name="UserPlus" size={16} className="text-blue-500" />
                           <div>
                             <p className="text-xs">Регистрация</p>
-                            <p className="font-medium">{election.registrationDuration} дней</p>
+                            <p className="font-medium">{election.registrationDuration}ч ({Math.round(election.registrationDuration / 24)}д)</p>
                           </div>
                         </div>
                         <div className="flex items-center gap-2 text-muted-foreground">
                           <Icon name="Clock" size={16} className="text-accent" />
                           <div>
                             <p className="text-xs">Голосование</p>
-                            <p className="font-medium">{election.duration} дней</p>
+                            <p className="font-medium">{election.duration}ч ({Math.round(election.duration / 24)}д)</p>
                           </div>
                         </div>
                         <div className="flex items-center gap-2 text-muted-foreground">
                           <Icon name="Target" size={16} className="text-orange-500" />
                           <div>
                             <p className="text-xs">Мин. голосов</p>
-                            <p className="font-medium">{election.minVotesThreshold}</p>
+                            <p className="font-medium">{election.minVotesThresholdPercent}% ({Math.ceil(election.serverMemberCount * election.minVotesThresholdPercent / 100)})</p>
                           </div>
                         </div>
                         <div className="flex items-center gap-2 text-muted-foreground">
@@ -767,7 +777,9 @@ const Index = () => {
                       </div>
                     </CardHeader>
                     <CardContent className="space-y-4">
-                      {election.totalVotes >= election.minVotesThreshold ? (
+                      {(() => {
+                        const requiredVotes = Math.ceil(election.serverMemberCount * election.minVotesThresholdPercent / 100);
+                        return election.totalVotes >= requiredVotes ? (
                         <div className="space-y-2">
                           {election.candidates.sort((a, b) => b.votes - a.votes).map((candidate, idx) => {
                             const percentage = election.totalVotes > 0 
@@ -788,7 +800,7 @@ const Index = () => {
                             );
                           })}
                           <p className="text-xs text-muted-foreground text-center pt-2">
-                            Всего голосов: {election.totalVotes} • Завершено: {election.endDate}
+                            Всего голосов: {election.totalVotes} • Завершено: {new Date(election.endDate).toLocaleDateString('ru-RU')}
                           </p>
                         </div>
                       ) : (
@@ -797,11 +809,12 @@ const Index = () => {
                           <div>
                             <p className="text-sm font-medium text-red-600 dark:text-red-400">Выборы не состоялись</p>
                             <p className="text-xs text-muted-foreground">
-                              Недостаточно голосов: {election.totalVotes} из {election.minVotesThreshold}
+                              Недостаточно голосов: {election.totalVotes} из {requiredVotes} ({election.minVotesThresholdPercent}% от {election.serverMemberCount} участников)
                             </p>
                           </div>
                         </div>
-                      )}
+                      );
+                    })()}
                     </CardContent>
                   </Card>
                 ))}
