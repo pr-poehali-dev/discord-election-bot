@@ -22,7 +22,8 @@ interface Election {
   title: string;
   description: string;
   status: 'active' | 'completed' | 'scheduled';
-  role: string;
+  assignedRoles: string[];
+  voterRoles: string[];
   duration: number;
   endDate: string;
   candidates: Candidate[];
@@ -36,7 +37,8 @@ const Index = () => {
       title: 'Модератор Сервера',
       description: 'Выборы главного модератора Discord-сервера на следующий месяц',
       status: 'active',
-      role: '@Модератор',
+      assignedRoles: ['@Модератор', '@Старший-Модератор'],
+      voterRoles: ['@Участник', '@Проверенный'],
       duration: 30,
       endDate: '2025-12-07',
       candidates: [
@@ -51,7 +53,8 @@ const Index = () => {
       title: 'Организатор Ивентов',
       description: 'Голосование за организатора еженедельных мероприятий',
       status: 'active',
-      role: '@Event-Master',
+      assignedRoles: ['@Event-Master'],
+      voterRoles: ['@Участник'],
       duration: 14,
       endDate: '2025-11-21',
       candidates: [
@@ -65,9 +68,13 @@ const Index = () => {
   const [newElection, setNewElection] = useState({
     title: '',
     description: '',
-    role: '',
+    assignedRoles: [] as string[],
+    voterRoles: [] as string[],
     duration: 30
   });
+
+  const [roleInput, setRoleInput] = useState('');
+  const [voterRoleInput, setVoterRoleInput] = useState('');
 
   const handleVote = (electionId: string, candidateId: string) => {
     setElections(prev => prev.map(election => {
@@ -91,11 +98,45 @@ const Index = () => {
     });
   };
 
+  const addAssignedRole = () => {
+    if (roleInput.trim() && !newElection.assignedRoles.includes(roleInput.trim())) {
+      setNewElection(prev => ({
+        ...prev,
+        assignedRoles: [...prev.assignedRoles, roleInput.trim()]
+      }));
+      setRoleInput('');
+    }
+  };
+
+  const removeAssignedRole = (role: string) => {
+    setNewElection(prev => ({
+      ...prev,
+      assignedRoles: prev.assignedRoles.filter(r => r !== role)
+    }));
+  };
+
+  const addVoterRole = () => {
+    if (voterRoleInput.trim() && !newElection.voterRoles.includes(voterRoleInput.trim())) {
+      setNewElection(prev => ({
+        ...prev,
+        voterRoles: [...prev.voterRoles, voterRoleInput.trim()]
+      }));
+      setVoterRoleInput('');
+    }
+  };
+
+  const removeVoterRole = (role: string) => {
+    setNewElection(prev => ({
+      ...prev,
+      voterRoles: prev.voterRoles.filter(r => r !== role)
+    }));
+  };
+
   const createElection = () => {
-    if (!newElection.title || !newElection.role) {
+    if (!newElection.title || newElection.assignedRoles.length === 0) {
       toast({
         title: "Ошибка",
-        description: "Заполните все обязательные поля",
+        description: "Укажите название и минимум одну роль для назначения",
         variant: "destructive"
       });
       return;
@@ -106,7 +147,8 @@ const Index = () => {
       title: newElection.title,
       description: newElection.description,
       status: 'scheduled',
-      role: newElection.role,
+      assignedRoles: newElection.assignedRoles,
+      voterRoles: newElection.voterRoles,
       duration: newElection.duration,
       endDate: new Date(Date.now() + newElection.duration * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
       candidates: [],
@@ -114,7 +156,7 @@ const Index = () => {
     };
 
     setElections(prev => [...prev, election]);
-    setNewElection({ title: '', description: '', role: '', duration: 30 });
+    setNewElection({ title: '', description: '', assignedRoles: [], voterRoles: [], duration: 30 });
     
     toast({
       title: "Выборы созданы!",
@@ -168,7 +210,7 @@ const Index = () => {
                     Создайте новое голосование для вашего Discord-сервера
                   </DialogDescription>
                 </DialogHeader>
-                <div className="grid gap-4 py-4">
+                <div className="grid gap-4 py-4 max-h-[60vh] overflow-y-auto">
                   <div className="grid gap-2">
                     <Label htmlFor="title">Название *</Label>
                     <Input
@@ -187,15 +229,73 @@ const Index = () => {
                       onChange={(e) => setNewElection(prev => ({ ...prev, description: e.target.value }))}
                     />
                   </div>
+                  
                   <div className="grid gap-2">
-                    <Label htmlFor="role">Роль Discord *</Label>
-                    <Input
-                      id="role"
-                      placeholder="@Модератор"
-                      value={newElection.role}
-                      onChange={(e) => setNewElection(prev => ({ ...prev, role: e.target.value }))}
-                    />
+                    <Label>Роли для назначения победителю *</Label>
+                    <div className="flex gap-2">
+                      <Input
+                        placeholder="@Модератор"
+                        value={roleInput}
+                        onChange={(e) => setRoleInput(e.target.value)}
+                        onKeyDown={(e) => e.key === 'Enter' && (e.preventDefault(), addAssignedRole())}
+                      />
+                      <Button type="button" size="icon" variant="secondary" onClick={addAssignedRole}>
+                        <Icon name="Plus" size={16} />
+                      </Button>
+                    </div>
+                    {newElection.assignedRoles.length > 0 && (
+                      <div className="flex flex-wrap gap-2 mt-2">
+                        {newElection.assignedRoles.map((role) => (
+                          <Badge key={role} variant="secondary" className="gap-1 pl-3 pr-1 py-1">
+                            {role}
+                            <Button
+                              type="button"
+                              size="icon"
+                              variant="ghost"
+                              className="h-4 w-4 p-0 hover:bg-destructive/20"
+                              onClick={() => removeAssignedRole(role)}
+                            >
+                              <Icon name="X" size={12} />
+                            </Button>
+                          </Badge>
+                        ))}
+                      </div>
+                    )}
                   </div>
+
+                  <div className="grid gap-2">
+                    <Label>Роли участников для голосования</Label>
+                    <div className="flex gap-2">
+                      <Input
+                        placeholder="@Участник"
+                        value={voterRoleInput}
+                        onChange={(e) => setVoterRoleInput(e.target.value)}
+                        onKeyDown={(e) => e.key === 'Enter' && (e.preventDefault(), addVoterRole())}
+                      />
+                      <Button type="button" size="icon" variant="secondary" onClick={addVoterRole}>
+                        <Icon name="Plus" size={16} />
+                      </Button>
+                    </div>
+                    {newElection.voterRoles.length > 0 && (
+                      <div className="flex flex-wrap gap-2 mt-2">
+                        {newElection.voterRoles.map((role) => (
+                          <Badge key={role} variant="outline" className="gap-1 pl-3 pr-1 py-1">
+                            {role}
+                            <Button
+                              type="button"
+                              size="icon"
+                              variant="ghost"
+                              className="h-4 w-4 p-0 hover:bg-destructive/20"
+                              onClick={() => removeVoterRole(role)}
+                            >
+                              <Icon name="X" size={12} />
+                            </Button>
+                          </Badge>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+
                   <div className="grid gap-2">
                     <Label htmlFor="duration">Период действия (дней)</Label>
                     <Input
@@ -236,18 +336,36 @@ const Index = () => {
                         {getStatusText(election.status)}
                       </Badge>
                     </div>
-                    <div className="flex items-center gap-4 pt-2 text-sm text-muted-foreground">
-                      <div className="flex items-center gap-1">
-                        <Icon name="Award" size={16} />
-                        <span>{election.role}</span>
+                    <div className="space-y-3 pt-2">
+                      <div className="flex items-center gap-2 text-sm">
+                        <Icon name="Award" size={16} className="text-primary" />
+                        <span className="text-muted-foreground">Назначаемые роли:</span>
+                        <div className="flex flex-wrap gap-1">
+                          {election.assignedRoles.map(role => (
+                            <Badge key={role} variant="secondary" className="text-xs">{role}</Badge>
+                          ))}
+                        </div>
                       </div>
-                      <div className="flex items-center gap-1">
-                        <Icon name="Calendar" size={16} />
-                        <span>До {election.endDate}</span>
-                      </div>
-                      <div className="flex items-center gap-1">
-                        <Icon name="Users" size={16} />
-                        <span>{election.totalVotes} голосов</span>
+                      {election.voterRoles.length > 0 && (
+                        <div className="flex items-center gap-2 text-sm">
+                          <Icon name="Users" size={16} className="text-accent" />
+                          <span className="text-muted-foreground">Могут голосовать:</span>
+                          <div className="flex flex-wrap gap-1">
+                            {election.voterRoles.map(role => (
+                              <Badge key={role} variant="outline" className="text-xs">{role}</Badge>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                      <div className="flex items-center gap-4 text-sm text-muted-foreground">
+                        <div className="flex items-center gap-1">
+                          <Icon name="Calendar" size={16} />
+                          <span>До {election.endDate}</span>
+                        </div>
+                        <div className="flex items-center gap-1">
+                          <Icon name="BarChart3" size={16} />
+                          <span>{election.totalVotes} голосов</span>
+                        </div>
                       </div>
                     </div>
                   </CardHeader>
@@ -303,12 +421,28 @@ const Index = () => {
                         {getStatusText(election.status)}
                       </Badge>
                     </div>
-                    <div className="flex items-center gap-4 pt-2 text-sm text-muted-foreground">
-                      <div className="flex items-center gap-1">
-                        <Icon name="Award" size={16} />
-                        <span>{election.role}</span>
+                    <div className="space-y-3 pt-2">
+                      <div className="flex items-center gap-2 text-sm">
+                        <Icon name="Award" size={16} className="text-primary" />
+                        <span className="text-muted-foreground">Назначаемые роли:</span>
+                        <div className="flex flex-wrap gap-1">
+                          {election.assignedRoles.map(role => (
+                            <Badge key={role} variant="secondary" className="text-xs">{role}</Badge>
+                          ))}
+                        </div>
                       </div>
-                      <div className="flex items-center gap-1">
+                      {election.voterRoles.length > 0 && (
+                        <div className="flex items-center gap-2 text-sm">
+                          <Icon name="Users" size={16} className="text-accent" />
+                          <span className="text-muted-foreground">Могут голосовать:</span>
+                          <div className="flex flex-wrap gap-1">
+                            {election.voterRoles.map(role => (
+                              <Badge key={role} variant="outline" className="text-xs">{role}</Badge>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                      <div className="flex items-center gap-1 text-sm text-muted-foreground">
                         <Icon name="Clock" size={16} />
                         <span>{election.duration} дней</span>
                       </div>
