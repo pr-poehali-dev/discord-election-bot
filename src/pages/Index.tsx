@@ -1014,7 +1014,7 @@ const Index = () => {
                         <Icon name="Settings" size={16} />
                         Администрирование
                       </h4>
-                      <div className="grid grid-cols-3 gap-2">
+                      <div className="grid grid-cols-4 gap-2">
                         {election.status === 'registration' && (
                           <Button size="sm" variant="outline" onClick={() => startVoting(election.id)}>
                             <Icon name="Play" size={14} className="mr-1" />
@@ -1027,6 +1027,10 @@ const Index = () => {
                             Завершить
                           </Button>
                         )}
+                        <Button size="sm" variant="outline" onClick={() => openEditElection(election.id)}>
+                          <Icon name="Edit" size={14} className="mr-1" />
+                          Редактировать
+                        </Button>
                         <Dialog open={isCandidateDialogOpen && editingElectionId === election.id} onOpenChange={(open) => {
                           setIsCandidateDialogOpen(open);
                           if (open) {
