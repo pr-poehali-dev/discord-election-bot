@@ -132,6 +132,8 @@ const Index = () => {
   const [editingElectionId, setEditingElectionId] = useState<string | null>(null);
   const [isCandidateDialogOpen, setIsCandidateDialogOpen] = useState(false);
   const [isAdminMode, setIsAdminMode] = useState(false);
+  const [isElectionDialogOpen, setIsElectionDialogOpen] = useState(false);
+  const [editingElectionData, setEditingElectionData] = useState<string | null>(null);
 
   const handleVote = (electionId: string, candidateId: string) => {
     setElections(prev => prev.map(election => {
@@ -206,6 +208,28 @@ const Index = () => {
     }));
   };
 
+  const openEditElection = (electionId: string) => {
+    const election = elections.find(e => e.id === electionId);
+    if (!election) return;
+
+    setNewElection({
+      title: election.title,
+      description: election.description,
+      assignedRoles: [...election.assignedRoles],
+      candidateRoles: [...election.candidateRoles],
+      voterRoles: [...election.voterRoles],
+      duration: election.duration,
+      registrationDuration: election.registrationDuration,
+      termDuration: election.termDuration,
+      daysBeforeTermEnd: election.daysBeforeTermEnd,
+      minVotesThresholdPercent: election.minVotesThresholdPercent,
+      keepOldRoles: election.keepOldRoles,
+      autoStart: election.autoStart
+    });
+    setEditingElectionData(electionId);
+    setIsElectionDialogOpen(true);
+  };
+
   const createElection = () => {
     if (!newElection.title || newElection.assignedRoles.length === 0) {
       toast({
@@ -216,28 +240,59 @@ const Index = () => {
       return;
     }
 
-    const election: Election = {
-      id: Date.now().toString(),
-      title: newElection.title,
-      description: newElection.description,
-      status: 'scheduled',
-      assignedRoles: newElection.assignedRoles,
-      candidateRoles: newElection.candidateRoles,
-      voterRoles: newElection.voterRoles,
-      duration: newElection.duration,
-      registrationDuration: newElection.registrationDuration,
-      termDuration: newElection.termDuration,
-      daysBeforeTermEnd: newElection.daysBeforeTermEnd,
-      minVotesThresholdPercent: newElection.minVotesThresholdPercent,
-      serverMemberCount,
-      keepOldRoles: newElection.keepOldRoles,
-      autoStart: newElection.autoStart,
-      registrationAttempts: 0,
-      candidates: [],
-      totalVotes: 0
-    };
+    if (editingElectionData) {
+      setElections(prev => prev.map(e => 
+        e.id === editingElectionData
+          ? {
+              ...e,
+              title: newElection.title,
+              description: newElection.description,
+              assignedRoles: newElection.assignedRoles,
+              candidateRoles: newElection.candidateRoles,
+              voterRoles: newElection.voterRoles,
+              duration: newElection.duration,
+              registrationDuration: newElection.registrationDuration,
+              termDuration: newElection.termDuration,
+              daysBeforeTermEnd: newElection.daysBeforeTermEnd,
+              minVotesThresholdPercent: newElection.minVotesThresholdPercent,
+              serverMemberCount,
+              keepOldRoles: newElection.keepOldRoles,
+              autoStart: newElection.autoStart
+            }
+          : e
+      ));
+      toast({
+        title: "Выборы обновлены!",
+        description: "Изменения успешно сохранены",
+      });
+    } else {
+      const election: Election = {
+        id: Date.now().toString(),
+        title: newElection.title,
+        description: newElection.description,
+        status: 'scheduled',
+        assignedRoles: newElection.assignedRoles,
+        candidateRoles: newElection.candidateRoles,
+        voterRoles: newElection.voterRoles,
+        duration: newElection.duration,
+        registrationDuration: newElection.registrationDuration,
+        termDuration: newElection.termDuration,
+        daysBeforeTermEnd: newElection.daysBeforeTermEnd,
+        minVotesThresholdPercent: newElection.minVotesThresholdPercent,
+        serverMemberCount,
+        keepOldRoles: newElection.keepOldRoles,
+        autoStart: newElection.autoStart,
+        registrationAttempts: 0,
+        candidates: [],
+        totalVotes: 0
+      };
+      setElections(prev => [...prev, election]);
+      toast({
+        title: "Выборы созданы!",
+        description: "Новые выборы успешно запланированы",
+      });
+    }
 
-    setElections(prev => [...prev, election]);
     setNewElection({ 
       title: '', 
       description: '', 
@@ -252,11 +307,8 @@ const Index = () => {
       keepOldRoles: false,
       autoStart: true
     });
-    
-    toast({
-      title: "Выборы созданы!",
-      description: "Новые выборы успешно запланированы",
-    });
+    setEditingElectionData(null);
+    setIsElectionDialogOpen(false);
   };
 
   const getStatusColor = (status: string) => {
@@ -542,7 +594,26 @@ const Index = () => {
                 <p className="text-muted-foreground">Управление выборами и ролями</p>
               </div>
             </div>
-            <Dialog>
+            <Dialog open={isElectionDialogOpen} onOpenChange={(open) => {
+              setIsElectionDialogOpen(open);
+              if (!open) {
+                setEditingElectionData(null);
+                setNewElection({ 
+                  title: '', 
+                  description: '', 
+                  assignedRoles: [],
+                  candidateRoles: [],
+                  voterRoles: [],
+                  duration: 720,
+                  registrationDuration: 168,
+                  termDuration: 720,
+                  daysBeforeTermEnd: 2,
+                  minVotesThresholdPercent: 20,
+                  keepOldRoles: false,
+                  autoStart: true
+                });
+              }
+            }}>
               <DialogTrigger asChild>
                 <Button size="lg" className="gap-2">
                   <Icon name="Plus" size={20} />
@@ -551,9 +622,9 @@ const Index = () => {
               </DialogTrigger>
               <DialogContent className="sm:max-w-[525px]">
                 <DialogHeader>
-                  <DialogTitle>Новые выборы</DialogTitle>
+                  <DialogTitle>{editingElectionData ? 'Редактировать выборы' : 'Новые выборы'}</DialogTitle>
                   <DialogDescription>
-                    Создайте новое голосование для вашего Discord-сервера
+                    {editingElectionData ? 'Измените параметры существующих выборов' : 'Создайте новое голосование для вашего Discord-сервера'}
                   </DialogDescription>
                 </DialogHeader>
                 <div className="grid gap-4 py-4 max-h-[60vh] overflow-y-auto">
@@ -772,7 +843,7 @@ const Index = () => {
                   </div>
                 </div>
                 <Button onClick={createElection} className="w-full">
-                  Создать выборы
+                  {editingElectionData ? 'Сохранить изменения' : 'Создать выборы'}
                 </Button>
               </DialogContent>
             </Dialog>
@@ -1184,10 +1255,16 @@ const Index = () => {
                         </div>
                       </div>
                     )}
-                    <Button onClick={() => startRegistration(election.id)} className="w-full">
-                      <Icon name="Play" size={16} className="mr-2" />
-                      Начать регистрацию
-                    </Button>
+                    <div className="grid grid-cols-2 gap-2">
+                      <Button onClick={() => startRegistration(election.id)} className="w-full">
+                        <Icon name="Play" size={16} className="mr-2" />
+                        Начать регистрацию
+                      </Button>
+                      <Button onClick={() => openEditElection(election.id)} variant="outline" className="w-full">
+                        <Icon name="Edit" size={16} className="mr-2" />
+                        Редактировать
+                      </Button>
+                    </div>
                   </CardContent>
                 </Card>
               ))}
