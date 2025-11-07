@@ -40,11 +40,16 @@ def handle_discord_interaction(event: Dict[str, Any]) -> Dict[str, Any]:
     headers = event.get('headers', {})
     body_str = event.get('body', '{}')
     
-    signature = headers.get('x-signature-ed25519', '')
-    timestamp = headers.get('x-signature-timestamp', '')
+    headers_lower = {k.lower(): v for k, v in headers.items()}
+    
+    signature = headers_lower.get('x-signature-ed25519', '')
+    timestamp = headers_lower.get('x-signature-timestamp', '')
     public_key = os.environ.get('DISCORD_PUBLIC_KEY', '')
     
+    print(f"Discord verification: sig={signature[:20]}..., ts={timestamp}, key={public_key[:20]}...")
+    
     if not verify_discord_signature(body_str, signature, timestamp, public_key):
+        print(f"Verification failed!")
         return create_json_response({'error': 'Invalid signature'}, 401)
     
     body = json.loads(body_str)
@@ -65,7 +70,8 @@ def verify_discord_signature(body: str, signature: str, timestamp: str, public_k
         message = timestamp.encode() + body.encode()
         verify_key.verify(message, bytes.fromhex(signature))
         return True
-    except:
+    except Exception as e:
+        print(f"Signature verification error: {e}")
         return False
 
 def handle_discord_command(interaction: Dict[str, Any]) -> Dict[str, Any]:
