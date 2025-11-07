@@ -21,10 +21,14 @@ interface Election {
   id: string;
   title: string;
   description: string;
-  status: 'active' | 'completed' | 'scheduled';
+  status: 'active' | 'completed' | 'scheduled' | 'registration';
   assignedRoles: string[];
   voterRoles: string[];
   duration: number;
+  registrationDuration: number;
+  minVotesThreshold: number;
+  keepOldRoles: boolean;
+  registrationEndDate?: string;
   endDate: string;
   candidates: Candidate[];
   totalVotes: number;
@@ -45,6 +49,9 @@ const Index = () => {
       assignedRoles: ['@Модератор', '@Старший-Модератор'],
       voterRoles: ['@Участник', '@Проверенный'],
       duration: 30,
+      registrationDuration: 7,
+      minVotesThreshold: 50,
+      keepOldRoles: false,
       endDate: '2025-12-07',
       candidates: [
         { id: 'c1', name: 'AlexDev', avatar: '👨‍💻', votes: 45 },
@@ -61,6 +68,9 @@ const Index = () => {
       assignedRoles: ['@Event-Master'],
       voterRoles: ['@Участник'],
       duration: 14,
+      registrationDuration: 3,
+      minVotesThreshold: 30,
+      keepOldRoles: true,
       endDate: '2025-11-21',
       candidates: [
         { id: 'c4', name: 'PartyKing', avatar: '🎉', votes: 52 },
@@ -75,7 +85,10 @@ const Index = () => {
     description: '',
     assignedRoles: [] as string[],
     voterRoles: [] as string[],
-    duration: 30
+    duration: 30,
+    registrationDuration: 7,
+    minVotesThreshold: 10,
+    keepOldRoles: false
   });
 
   const [roleInput, setRoleInput] = useState('');
@@ -158,13 +171,25 @@ const Index = () => {
       assignedRoles: newElection.assignedRoles,
       voterRoles: newElection.voterRoles,
       duration: newElection.duration,
+      registrationDuration: newElection.registrationDuration,
+      minVotesThreshold: newElection.minVotesThreshold,
+      keepOldRoles: newElection.keepOldRoles,
       endDate: new Date(Date.now() + newElection.duration * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
       candidates: [],
       totalVotes: 0
     };
 
     setElections(prev => [...prev, election]);
-    setNewElection({ title: '', description: '', assignedRoles: [], voterRoles: [], duration: 30 });
+    setNewElection({ 
+      title: '', 
+      description: '', 
+      assignedRoles: [], 
+      voterRoles: [], 
+      duration: 30,
+      registrationDuration: 7,
+      minVotesThreshold: 10,
+      keepOldRoles: false
+    });
     
     toast({
       title: "Выборы созданы!",
@@ -175,6 +200,7 @@ const Index = () => {
   const getStatusColor = (status: string) => {
     switch (status) {
       case 'active': return 'bg-accent';
+      case 'registration': return 'bg-blue-500';
       case 'completed': return 'bg-muted';
       case 'scheduled': return 'bg-primary';
       default: return 'bg-secondary';
@@ -184,6 +210,7 @@ const Index = () => {
   const getStatusText = (status: string) => {
     switch (status) {
       case 'active': return 'Активно';
+      case 'registration': return 'Регистрация';
       case 'completed': return 'Завершено';
       case 'scheduled': return 'Запланировано';
       default: return status;
@@ -256,15 +283,22 @@ const Index = () => {
       return;
     }
 
+    const registrationEndDate = new Date(Date.now() + election.registrationDuration * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+
     setElections(prev => prev.map(e => 
       e.id === electionId 
-        ? { ...e, status: 'active' as const }
+        ? { 
+            ...e, 
+            status: 'registration' as const,
+            registrationEndDate,
+            endDate: new Date(Date.now() + (election.registrationDuration + election.duration) * 24 * 60 * 60 * 1000).toISOString().split('T')[0]
+          }
         : e
     ));
     
     toast({
-      title: "Выборы запущены!",
-      description: "Голосование началось",
+      title: "Период регистрации начался!",
+      description: `Регистрация кандидатов до ${registrationEndDate}`,
     });
   };
 
@@ -382,15 +416,61 @@ const Index = () => {
                     )}
                   </div>
 
-                  <div className="grid gap-2">
-                    <Label htmlFor="duration">Период действия (дней)</Label>
-                    <Input
-                      id="duration"
-                      type="number"
-                      min="1"
-                      value={newElection.duration}
-                      onChange={(e) => setNewElection(prev => ({ ...prev, duration: parseInt(e.target.value) }))}
-                    />
+                  <div className="grid gap-4 p-4 border rounded-lg bg-muted/30">
+                    <h3 className="font-semibold text-sm flex items-center gap-2">
+                      <Icon name="Settings" size={16} />
+                      Параметры выборов
+                    </h3>
+                    
+                    <div className="grid gap-2">
+                      <Label htmlFor="registrationDuration">Период регистрации кандидатов (дней)</Label>
+                      <Input
+                        id="registrationDuration"
+                        type="number"
+                        min="1"
+                        value={newElection.registrationDuration}
+                        onChange={(e) => setNewElection(prev => ({ ...prev, registrationDuration: parseInt(e.target.value) }))}
+                      />
+                      <p className="text-xs text-muted-foreground">Время для добавления кандидатов перед голосованием</p>
+                    </div>
+
+                    <div className="grid gap-2">
+                      <Label htmlFor="duration">Период голосования (дней)</Label>
+                      <Input
+                        id="duration"
+                        type="number"
+                        min="1"
+                        value={newElection.duration}
+                        onChange={(e) => setNewElection(prev => ({ ...prev, duration: parseInt(e.target.value) }))}
+                      />
+                      <p className="text-xs text-muted-foreground">Длительность активного голосования</p>
+                    </div>
+
+                    <div className="grid gap-2">
+                      <Label htmlFor="minVotesThreshold">Минимум голосов для признания состоявшимися</Label>
+                      <Input
+                        id="minVotesThreshold"
+                        type="number"
+                        min="1"
+                        value={newElection.minVotesThreshold}
+                        onChange={(e) => setNewElection(prev => ({ ...prev, minVotesThreshold: parseInt(e.target.value) }))}
+                      />
+                      <p className="text-xs text-muted-foreground">Если меньше голосов, выборы не состоятся</p>
+                    </div>
+
+                    <div className="flex items-center justify-between">
+                      <div className="space-y-1">
+                        <Label htmlFor="keepOldRoles">Сохранять старые роли до назначения нового</Label>
+                        <p className="text-xs text-muted-foreground">Предыдущий владелец роли не потеряет её сразу</p>
+                      </div>
+                      <input
+                        id="keepOldRoles"
+                        type="checkbox"
+                        checked={newElection.keepOldRoles}
+                        onChange={(e) => setNewElection(prev => ({ ...prev, keepOldRoles: e.target.checked }))}
+                        className="h-4 w-4 rounded border-gray-300"
+                      />
+                    </div>
                   </div>
                 </div>
                 <Button onClick={createElection} className="w-full">
@@ -443,19 +523,31 @@ const Index = () => {
                           </div>
                         </div>
                       )}
-                      <div className="flex items-center gap-4 text-sm text-muted-foreground">
-                        <div className="flex items-center gap-1">
-                          <Icon name="Calendar" size={16} />
-                          <span>До {election.endDate}</span>
+                      <div className="grid grid-cols-3 gap-2 text-sm">
+                        <div className="flex items-center gap-1 text-muted-foreground">
+                          <Icon name="Calendar" size={14} />
+                          <span className="text-xs">До {election.endDate}</span>
+                        </div>
+                        <div className="flex items-center gap-1 text-muted-foreground">
+                          <Icon name="BarChart3" size={14} />
+                          <span className="text-xs">{election.totalVotes} / {election.minVotesThreshold}</span>
                         </div>
                         <div className="flex items-center gap-1">
-                          <Icon name="BarChart3" size={16} />
-                          <span>{election.totalVotes} голосов</span>
+                          <Icon name={election.keepOldRoles ? "Shield" : "ShieldOff"} size={14} className={election.keepOldRoles ? "text-green-500" : "text-red-500"} />
+                          <span className="text-xs text-muted-foreground">{election.keepOldRoles ? 'Роли остаются' : 'Роли меняются'}</span>
                         </div>
                       </div>
                     </div>
                   </CardHeader>
                   <CardContent className="space-y-4">
+                    {election.totalVotes < election.minVotesThreshold && (
+                      <div className="flex items-center gap-2 p-3 bg-orange-500/10 border border-orange-500/20 rounded-lg">
+                        <Icon name="AlertCircle" size={16} className="text-orange-500" />
+                        <p className="text-sm text-orange-600 dark:text-orange-400">
+                          Нужно еще {election.minVotesThreshold - election.totalVotes} голосов для признания выборов состоявшимися
+                        </p>
+                      </div>
+                    )}
                     {election.candidates.map((candidate) => {
                       const percentage = election.totalVotes > 0 
                         ? Math.round((candidate.votes / election.totalVotes) * 100) 
@@ -528,9 +620,35 @@ const Index = () => {
                           </div>
                         </div>
                       )}
-                      <div className="flex items-center gap-1 text-sm text-muted-foreground">
-                        <Icon name="Clock" size={16} />
-                        <span>{election.duration} дней</span>
+                      <div className="grid grid-cols-2 gap-3 text-sm">
+                        <div className="flex items-center gap-2 text-muted-foreground">
+                          <Icon name="UserPlus" size={16} className="text-blue-500" />
+                          <div>
+                            <p className="text-xs">Регистрация</p>
+                            <p className="font-medium">{election.registrationDuration} дней</p>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-2 text-muted-foreground">
+                          <Icon name="Clock" size={16} className="text-accent" />
+                          <div>
+                            <p className="text-xs">Голосование</p>
+                            <p className="font-medium">{election.duration} дней</p>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-2 text-muted-foreground">
+                          <Icon name="Target" size={16} className="text-orange-500" />
+                          <div>
+                            <p className="text-xs">Мин. голосов</p>
+                            <p className="font-medium">{election.minVotesThreshold}</p>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-2 text-muted-foreground">
+                          <Icon name={election.keepOldRoles ? "Shield" : "ShieldOff"} size={16} className={election.keepOldRoles ? "text-green-500" : "text-red-500"} />
+                          <div>
+                            <p className="text-xs">Старые роли</p>
+                            <p className="font-medium">{election.keepOldRoles ? 'Сохраняются' : 'Удаляются'}</p>
+                          </div>
+                        </div>
                       </div>
                     </div>
                   </CardHeader>
@@ -622,16 +740,73 @@ const Index = () => {
             </div>
           </TabsContent>
 
-          <TabsContent value="history">
-            <Card>
-              <CardContent className="flex flex-col items-center justify-center py-16 text-center">
-                <Icon name="Archive" size={48} className="text-muted-foreground mb-4" />
-                <h3 className="text-xl font-semibold mb-2">История выборов пуста</h3>
-                <p className="text-muted-foreground">
-                  Завершённые выборы будут отображаться здесь
-                </p>
-              </CardContent>
-            </Card>
+          <TabsContent value="history" className="space-y-6">
+            {elections.filter(e => e.status === 'completed').length === 0 ? (
+              <Card>
+                <CardContent className="flex flex-col items-center justify-center py-16 text-center">
+                  <Icon name="Archive" size={48} className="text-muted-foreground mb-4" />
+                  <h3 className="text-xl font-semibold mb-2">История выборов пуста</h3>
+                  <p className="text-muted-foreground">
+                    Завершённые выборы будут отображаться здесь
+                  </p>
+                </CardContent>
+              </Card>
+            ) : (
+              <div className="grid gap-6 md:grid-cols-2">
+                {elections.filter(e => e.status === 'completed').map((election, index) => (
+                  <Card key={election.id} className="animate-scale-in opacity-70" style={{ animationDelay: `${index * 0.1}s` }}>
+                    <CardHeader>
+                      <div className="flex items-start justify-between">
+                        <div className="space-y-1">
+                          <CardTitle className="text-2xl">{election.title}</CardTitle>
+                          <CardDescription>{election.description}</CardDescription>
+                        </div>
+                        <Badge className={getStatusColor(election.status)}>
+                          {getStatusText(election.status)}
+                        </Badge>
+                      </div>
+                    </CardHeader>
+                    <CardContent className="space-y-4">
+                      {election.totalVotes >= election.minVotesThreshold ? (
+                        <div className="space-y-2">
+                          {election.candidates.sort((a, b) => b.votes - a.votes).map((candidate, idx) => {
+                            const percentage = election.totalVotes > 0 
+                              ? Math.round((candidate.votes / election.totalVotes) * 100) 
+                              : 0;
+                            return (
+                              <div key={candidate.id} className={`p-3 rounded-lg ${idx === 0 ? 'bg-accent/30 border-2 border-accent' : 'bg-muted'}`}>
+                                <div className="flex items-center justify-between mb-2">
+                                  <div className="flex items-center gap-3">
+                                    {idx === 0 && <Icon name="Crown" size={20} className="text-yellow-500" />}
+                                    <span className="text-2xl">{candidate.avatar}</span>
+                                    <span className="font-medium">{candidate.name}</span>
+                                  </div>
+                                  <span className="text-sm font-semibold">{percentage}%</span>
+                                </div>
+                                <Progress value={percentage} className="h-2" />
+                              </div>
+                            );
+                          })}
+                          <p className="text-xs text-muted-foreground text-center pt-2">
+                            Всего голосов: {election.totalVotes} • Завершено: {election.endDate}
+                          </p>
+                        </div>
+                      ) : (
+                        <div className="flex items-center gap-2 p-4 bg-red-500/10 border border-red-500/20 rounded-lg">
+                          <Icon name="XCircle" size={20} className="text-red-500" />
+                          <div>
+                            <p className="text-sm font-medium text-red-600 dark:text-red-400">Выборы не состоялись</p>
+                            <p className="text-xs text-muted-foreground">
+                              Недостаточно голосов: {election.totalVotes} из {election.minVotesThreshold}
+                            </p>
+                          </div>
+                        </div>
+                      )}
+                    </CardContent>
+                  </Card>
+                ))}
+              </div>
+            )}
           </TabsContent>
         </Tabs>
       </div>
