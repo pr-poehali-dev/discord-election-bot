@@ -45,13 +45,19 @@ def handle_discord_interaction(event: Dict[str, Any]) -> Dict[str, Any]:
     headers = event.get('headers', {})
     body_str = event.get('body', '{}')
     
+    print(f"All headers: {headers}")
+    
     headers_lower = {k.lower(): v for k, v in headers.items()}
     
     signature = headers_lower.get('x-signature-ed25519', '')
     timestamp = headers_lower.get('x-signature-timestamp', '')
     public_key = os.environ.get('DISCORD_PUBLIC_KEY', '')
     
-    print(f"Discord verification: sig={signature[:20]}..., ts={timestamp}, key={public_key[:20]}...")
+    print(f"Discord verification: sig={signature[:20] if signature else 'MISSING'}..., ts={timestamp if timestamp else 'MISSING'}, key={public_key[:20]}...")
+    
+    if not signature or not timestamp:
+        print(f"Missing Discord headers!")
+        return create_json_response({'error': 'Missing signature headers'}, 401)
     
     if not verify_discord_signature(body_str, signature, timestamp, public_key):
         print(f"Verification failed!")
