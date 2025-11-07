@@ -35,6 +35,8 @@ interface Election {
   serverMemberCount: number;
   keepOldRoles: boolean;
   autoStart: boolean;
+  retryOnFail: boolean;
+  maxVotingAttempts: number;
   registrationStartDate?: string;
   registrationEndDate?: string;
   votingStartDate?: string;
@@ -42,6 +44,8 @@ interface Election {
   termEndDate?: string;
   currentWinner?: string;
   registrationAttempts: number;
+  votingAttempts: number;
+  userVotes: Record<string, string>;
   candidates: Candidate[];
   totalVotes: number;
 }
@@ -122,7 +126,9 @@ const Index = () => {
     daysBeforeTermEnd: 2,
     minVotesThresholdPercent: 20,
     keepOldRoles: false,
-    autoStart: true
+    autoStart: true,
+    retryOnFail: true,
+    maxVotingAttempts: 2
   });
 
   const [roleInput, setRoleInput] = useState('');
