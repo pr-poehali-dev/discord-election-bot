@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -19,8 +19,17 @@ interface Candidate {
   registeredAt: string;
 }
 
+interface Server {
+  id: string;
+  name: string;
+  icon?: string;
+  memberCount: number;
+  botAdmins: string[];
+}
+
 interface Election {
   id: string;
+  serverId: string;
   title: string;
   description: string;
   status: 'scheduled' | 'registration' | 'voting' | 'completed' | 'failed';
@@ -43,6 +52,7 @@ interface Election {
   votingEndDate?: string;
   termEndDate?: string;
   currentWinner?: string;
+  winnerUserId?: string;
   registrationAttempts: number;
   votingAttempts: number;
   userVotes: Record<string, string>;
@@ -57,13 +67,22 @@ interface CandidateForm {
 }
 
 const Index = () => {
-  const [serverMemberCount, setServerMemberCount] = useState(250);
-  const [isAdmin, setIsAdmin] = useState(true);
-  const [currentUser, setCurrentUser] = useState({ name: 'Admin', avatar: '👤', roles: ['@Администратор'] });
+  const [servers, setServers] = useState<Server[]>([
+    { id: 'server1', name: 'Основной сервер', icon: '🎮', memberCount: 250, botAdmins: ['Admin'] },
+    { id: 'server2', name: 'Сообщество разработчиков', icon: '💻', memberCount: 180, botAdmins: ['Admin'] },
+    { id: 'server3', name: 'Игровой клан', icon: '⚔️', memberCount: 420, botAdmins: ['Admin', 'ModeratorX'] }
+  ]);
+  const [selectedServerId, setSelectedServerId] = useState('server1');
+  const [currentUser, setCurrentUser] = useState({ name: 'Admin', avatar: '👤', roles: ['@Администратор'], userId: 'user1' });
+  
+  const selectedServer = servers.find(s => s.id === selectedServerId) || servers[0];
+  const isAdmin = selectedServer.botAdmins.includes(currentUser.name);
+  const serverMemberCount = selectedServer.memberCount;
 
   const [elections, setElections] = useState<Election[]>([
     {
       id: '1',
+      serverId: 'server1',
       title: 'Модератор Сервера',
       description: 'Выборы главного модератора Discord-сервера на следующий месяц',
       status: 'voting',
@@ -87,6 +106,7 @@ const Index = () => {
       registrationAttempts: 0,
       votingAttempts: 1,
       userVotes: {},
+      winnerUserId: undefined,
       candidates: [
         { id: 'c1', name: 'AlexDev', avatar: '👨‍💻', votes: 45, speech: 'Буду модерировать честно и справедливо', registeredAt: '2025-11-02T15:30:00' },
         { id: 'c2', name: 'SarahMod', avatar: '👩‍💼', votes: 38, speech: 'Опыт модерации 3 года', registeredAt: '2025-11-03T12:00:00' },
@@ -96,6 +116,7 @@ const Index = () => {
     },
     {
       id: '2',
+      serverId: 'server1',
       title: 'Организатор Ивентов',
       description: 'Голосование за организатора еженедельных мероприятий',
       status: 'registration',
@@ -117,10 +138,39 @@ const Index = () => {
       registrationAttempts: 1,
       votingAttempts: 0,
       userVotes: {},
+      winnerUserId: undefined,
+      candidates: [],
+      totalVotes: 0
+    },
+    {
+      id: '3',
+      serverId: 'server2',
+      title: 'Лидер команды',
+      description: 'Выборы тимлида разработки проекта',
+      status: 'scheduled',
+      assignedRoles: ['@Team-Lead'],
+      candidateRoles: ['@Developer'],
+      voterRoles: ['@Developer', '@Contributor'],
+      duration: 168,
+      registrationDuration: 48,
+      termDuration: 720,
+      daysBeforeTermEnd: 3,
+      minVotesThresholdPercent: 25,
+      serverMemberCount: 180,
+      keepOldRoles: true,
+      autoStart: true,
+      retryOnFail: true,
+      maxVotingAttempts: 2,
+      registrationAttempts: 0,
+      votingAttempts: 0,
+      userVotes: {},
+      winnerUserId: undefined,
       candidates: [],
       totalVotes: 0
     }
   ]);
+
+  const currentElections = elections.filter(e => e.serverId === selectedServerId);
 
   const [newElection, setNewElection] = useState({
     title: '',
@@ -148,6 +198,31 @@ const Index = () => {
   const [isAdminMode, setIsAdminMode] = useState(false);
   const [isElectionDialogOpen, setIsElectionDialogOpen] = useState(false);
   const [editingElectionData, setEditingElectionData] = useState<string | null>(null);
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      elections.forEach(election => {
+        if (election.status === 'completed' && election.winnerUserId && election.termEndDate) {
+          const termEnd = new Date(election.termEndDate).getTime();
+          const now = Date.now();
+          
+          if (now >= termEnd) {
+            const server = servers.find(s => s.id === election.serverId);
+            if (server && !server.botAdmins.includes(election.currentWinner || '')) {
+              toast({
+                title: "Роли победителя потеряны",
+                description: `${election.currentWinner} потерял роли. Запускается регистрация новых выборов`,
+                variant: "destructive"
+              });
+              startRegistration(election.id);
+            }
+          }
+        }
+      });
+    }, 10000);
+
+    return () => clearInterval(interval);
+  }, [elections, servers]);
 
   const handleVote = (electionId: string, candidateId: string) => {
     const election = elections.find(e => e.id === electionId);
@@ -322,6 +397,7 @@ const Index = () => {
     } else {
       const election: Election = {
         id: Date.now().toString(),
+        serverId: selectedServerId,
         title: newElection.title,
         description: newElection.description,
         status: 'scheduled',
@@ -341,6 +417,7 @@ const Index = () => {
         registrationAttempts: 0,
         votingAttempts: 0,
         userVotes: {},
+        winnerUserId: undefined,
         candidates: [],
         totalVotes: 0
       };
@@ -599,6 +676,7 @@ const Index = () => {
               ...e, 
               status: 'completed' as const,
               currentWinner: winner?.name,
+              winnerUserId: winner?.id,
               termEndDate
             }
           : e
@@ -712,10 +790,11 @@ const Index = () => {
               </div>
               <div>
                 <h1 className="text-4xl font-bold text-foreground">VoteBot Dashboard</h1>
-                <p className="text-muted-foreground">Управление выборами и ролями</p>
+                <p className="text-muted-foreground">Панель администратора бота</p>
               </div>
             </div>
-            <Dialog open={isElectionDialogOpen} onOpenChange={(open) => {
+            {isAdmin && (
+              <Dialog open={isElectionDialogOpen} onOpenChange={(open) => {
               setIsElectionDialogOpen(open);
               if (!open) {
                 setEditingElectionData(null);
@@ -997,7 +1076,62 @@ const Index = () => {
                 </Button>
               </DialogContent>
             </Dialog>
+            )}
           </div>
+        </div>
+
+        <div className="mb-6 p-4 bg-blue-500/10 border border-blue-500/20 rounded-lg">
+          <div className="flex items-start gap-3">
+            <Icon name="Info" size={20} className="text-blue-500 mt-0.5" />
+            <div className="flex-1">
+              <h3 className="font-semibold text-blue-700 dark:text-blue-300 mb-1">
+                Информация для участников сервера
+              </h3>
+              <p className="text-sm text-blue-600 dark:text-blue-400">
+                Этот дашборд доступен только администраторам бота. Обычные участники работают с выборами через команды бота в Discord:
+              </p>
+              <ul className="mt-2 space-y-1 text-sm text-blue-600 dark:text-blue-400">
+                <li>• <code className="px-1.5 py-0.5 bg-blue-500/20 rounded">/vote register</code> - выдвинуть свою кандидатуру</li>
+                <li>• <code className="px-1.5 py-0.5 bg-blue-500/20 rounded">/vote withdraw</code> - снять кандидатуру</li>
+                <li>• <code className="px-1.5 py-0.5 bg-blue-500/20 rounded">/vote cast @кандидат</code> - проголосовать</li>
+                <li>• <code className="px-1.5 py-0.5 bg-blue-500/20 rounded">/vote info</code> - информация о текущих выборах</li>
+              </ul>
+            </div>
+          </div>
+        </div>
+
+        <div className="mb-6 space-y-4">
+          <div className="flex items-center gap-3">
+            <Label className="text-sm font-semibold">Выбранный сервер:</Label>
+            <div className="flex gap-2 flex-wrap">
+              {servers.map(server => (
+                <Button
+                  key={server.id}
+                  variant={selectedServerId === server.id ? "default" : "outline"}
+                  size="sm"
+                  onClick={() => setSelectedServerId(server.id)}
+                  className="gap-2"
+                >
+                  <span>{server.icon}</span>
+                  <span>{server.name}</span>
+                  <Badge variant="secondary" className="ml-1">
+                    {currentElections.filter(e => e.serverId === server.id).length}
+                  </Badge>
+                </Button>
+              ))}
+            </div>
+          </div>
+          
+          {!isAdmin && (
+            <div className="p-3 bg-orange-500/10 border border-orange-500/20 rounded-lg">
+              <div className="flex items-center gap-2">
+                <Icon name="ShieldAlert" size={16} className="text-orange-500" />
+                <p className="text-sm text-orange-600 dark:text-orange-400">
+                  У вас нет прав администратора бота на этом сервере. Доступен только просмотр.
+                </p>
+              </div>
+            </div>
+          )}
         </div>
 
         <div className="mb-6 flex items-center justify-between">
@@ -1020,13 +1154,22 @@ const Index = () => {
             variant="outline"
             size="sm"
             onClick={() => {
-              const isCurrentlyAdmin = !isAdmin;
-              setIsAdmin(isCurrentlyAdmin);
+              const newUserIsAdmin = !isAdmin;
+              const newName = newUserIsAdmin ? 'Admin' : 'Пользователь123';
               setCurrentUser({
-                name: isCurrentlyAdmin ? 'Admin' : 'Пользователь123',
-                avatar: isCurrentlyAdmin ? '👤' : '👨‍💻',
-                roles: isCurrentlyAdmin ? ['@Администратор'] : ['@Проверенный', '@Участник']
+                name: newName,
+                avatar: newUserIsAdmin ? '👤' : '👨‍💻',
+                roles: newUserIsAdmin ? ['@Администратор'] : ['@Проверенный', '@Участник'],
+                userId: newUserIsAdmin ? 'user1' : 'user2'
               });
+              
+              if (!newUserIsAdmin && selectedServer) {
+                setServers(prev => prev.map(s => 
+                  s.id === selectedServerId 
+                    ? { ...s, botAdmins: s.botAdmins.filter(a => a !== newName) }
+                    : s
+                ));
+              }
             }}
           >
             <Icon name="Users" size={14} className="mr-2" />
@@ -1043,7 +1186,7 @@ const Index = () => {
 
           <TabsContent value="active" className="space-y-6">
             <div className="grid gap-6 md:grid-cols-2">
-              {elections.filter(e => e.status === 'voting' || e.status === 'registration').map((election, index) => (
+              {currentElections.filter(e => e.status === 'voting' || e.status === 'registration').map((election, index) => (
                 <Card key={election.id} className="animate-scale-in border-2" style={{ animationDelay: `${index * 0.1}s` }}>
                   <CardHeader>
                     <div className="flex items-start justify-between">
@@ -1328,7 +1471,7 @@ const Index = () => {
 
           <TabsContent value="scheduled" className="space-y-6">
             <div className="grid gap-6 md:grid-cols-2">
-              {elections.filter(e => e.status === 'scheduled').map((election, index) => (
+              {currentElections.filter(e => e.status === 'scheduled').map((election, index) => (
                 <Card key={election.id} className="animate-scale-in" style={{ animationDelay: `${index * 0.1}s` }}>
                   <CardHeader>
                     <div className="flex items-start justify-between">
@@ -1454,7 +1597,7 @@ const Index = () => {
           </TabsContent>
 
           <TabsContent value="history" className="space-y-6">
-            {elections.filter(e => e.status === 'completed' || e.status === 'failed').length === 0 ? (
+            {currentElections.filter(e => e.status === 'completed' || e.status === 'failed').length === 0 ? (
               <Card>
                 <CardContent className="flex flex-col items-center justify-center py-16 text-center">
                   <Icon name="Archive" size={48} className="text-muted-foreground mb-4" />
@@ -1466,7 +1609,7 @@ const Index = () => {
               </Card>
             ) : (
               <div className="grid gap-6 md:grid-cols-2">
-                {elections.filter(e => e.status === 'completed' || e.status === 'failed').map((election, index) => (
+                {currentElections.filter(e => e.status === 'completed' || e.status === 'failed').map((election, index) => (
                   <Card key={election.id} className="animate-scale-in opacity-70" style={{ animationDelay: `${index * 0.1}s` }}>
                     <CardHeader>
                       <div className="flex items-start justify-between">
