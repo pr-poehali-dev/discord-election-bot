@@ -35,6 +35,8 @@ export default function DiscordSetup() {
     setLoading(true);
     setResult(null);
 
+    console.log('Sending request to backend...');
+
     try {
       const response = await fetch(
         'https://functions.poehali.dev/97ae06e9-9c5e-49f5-baf2-e1e54dd0677d/register-commands',
@@ -50,7 +52,9 @@ export default function DiscordSetup() {
         }
       );
 
+      console.log('Response status:', response.status);
       const data = await response.json();
+      console.log('Response data:', data);
       
       if (data.success) {
         setResult({ success: true, data: data.data });
