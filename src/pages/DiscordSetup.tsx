@@ -37,76 +37,32 @@ export default function DiscordSetup() {
 
     try {
       const response = await fetch(
-        `https://discord.com/api/v10/applications/${applicationId}/commands`,
+        'https://functions.poehali.dev/97ae06e9-9c5e-49f5-baf2-e1e54dd0677d/register-commands',
         {
           method: 'POST',
           headers: {
-            'Authorization': `Bot ${botToken}`,
             'Content-Type': 'application/json'
           },
           body: JSON.stringify({
-            name: "vote",
-            description: "Управление выборами на сервере",
-            options: [
-              {
-                name: "info",
-                description: "Информация о текущих выборах",
-                type: 1
-              },
-              {
-                name: "register",
-                description: "Выдвинуть свою кандидатуру",
-                type: 1,
-                options: [
-                  {
-                    name: "speech",
-                    description: "Ваша предвыборная речь",
-                    type: 3,
-                    required: true
-                  }
-                ]
-              },
-              {
-                name: "withdraw",
-                description: "Снять свою кандидатуру",
-                type: 1
-              },
-              {
-                name: "cast",
-                description: "Проголосовать за кандидата",
-                type: 1,
-                options: [
-                  {
-                    name: "candidate",
-                    description: "Выберите кандидата",
-                    type: 6,
-                    required: true
-                  }
-                ]
-              },
-              {
-                name: "list",
-                description: "Список всех кандидатов",
-                type: 1
-              }
-            ]
+            applicationId: applicationId.trim(),
+            botToken: botToken.trim()
           })
         }
       );
 
       const data = await response.json();
       
-      if (response.ok) {
-        setResult({ success: true, data });
+      if (data.success) {
+        setResult({ success: true, data: data.data });
         toast({
           title: "✅ Успешно!",
           description: "Команда /vote зарегистрирована. Теперь она доступна на всех серверах с вашим ботом."
         });
       } else {
-        setResult({ success: false, error: data });
+        setResult({ success: false, error: data.error });
         toast({
           title: "❌ Ошибка",
-          description: data.message || "Не удалось зарегистрировать команды",
+          description: data.error?.message || "Не удалось зарегистрировать команды",
           variant: "destructive"
         });
       }

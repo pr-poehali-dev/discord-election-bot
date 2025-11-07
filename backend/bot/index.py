@@ -313,6 +313,9 @@ def handle_api_request(event: Dict[str, Any]) -> Dict[str, Any]:
     body_str = event.get('body', '{}')
     body = json.loads(body_str) if body_str else {}
     
+    if method == 'POST' and '/register-commands' in path:
+        return api_register_discord_commands(body)
+    
     conn = get_db_connection()
     
     try:
@@ -650,6 +653,68 @@ def ensure_server_exists(conn, guild_id: str, guild_name: str):
     )
     conn.commit()
     cursor.close()
+
+def api_register_discord_commands(data: Dict):
+    import urllib.request
+    
+    application_id = data.get('applicationId', '')
+    bot_token = data.get('botToken', '')
+    
+    if not application_id or not bot_token:
+        return create_json_response({'error': 'Missing applicationId or botToken'}, 400)
+    
+    commands_data = {
+        "name": "vote",
+        "description": "Управление выборами на сервере",
+        "options": [
+            {"name": "info", "description": "Информация о текущих выборах", "type": 1},
+            {
+                "name": "register",
+                "description": "Выдвинуть свою кандидатуру",
+                "type": 1,
+                "options": [
+                    {"name": "speech", "description": "Ваша предвыборная речь", "type": 3, "required": True}
+                ]
+            },
+            {"name": "withdraw", "description": "Снять свою кандидатуру", "type": 1},
+            {
+                "name": "cast",
+                "description": "Проголосовать за кандидата",
+                "type": 1,
+                "options": [
+                    {"name": "candidate", "description": "Выберите кандидата", "type": 6, "required": True}
+                ]
+            },
+            {"name": "list", "description": "Список всех кандидатов", "type": 1}
+        ]
+    }
+    
+    url = f"https://discord.com/api/v10/applications/{application_id}/commands"
+    headers = {
+        'Authorization': f'Bot {bot_token}',
+        'Content-Type': 'application/json'
+    }
+    
+    req = urllib.request.Request(
+        url,
+        data=json.dumps(commands_data).encode('utf-8'),
+        headers=headers,
+        method='POST'
+    )
+    
+    try:
+        with urllib.request.urlopen(req) as response:
+            result = json.loads(response.read().decode('utf-8'))
+            return create_json_response({'success': True, 'data': result})
+    except urllib.error.HTTPError as e:
+        error_body = e.read().decode('utf-8')
+        try:
+            error_data = json.loads(error_body)
+        except:
+            error_data = {'message': error_body}
+        return create_json_response({'success': False, 'error': error_data}, e.code)
+    except Exception as e:
+        return create_json_response({'success': False, 'error': str(e)}, 500)
 
 def get_db_connection():
     return psycopg2.connect(os.environ.get('DATABASE_URL', ''))
