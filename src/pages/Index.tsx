@@ -1120,8 +1120,52 @@ const Index = () => {
                               </div>
                             );
                           })}
+                          {election.termEndDate && (() => {
+                            const now = Date.now();
+                            const termEnd = new Date(election.termEndDate).getTime();
+                            const timeLeft = termEnd - now;
+                            const daysLeft = Math.ceil(timeLeft / (1000 * 60 * 60 * 24));
+                            const hoursLeft = Math.ceil(timeLeft / (1000 * 60 * 60));
+                            
+                            const nextElectionStart = termEnd - (election.daysBeforeTermEnd * 24 * 60 * 60 * 1000);
+                            const timeToNextElection = nextElectionStart - now;
+                            const daysToNextElection = Math.ceil(timeToNextElection / (1000 * 60 * 60 * 24));
+                            
+                            return (
+                              <div className="space-y-2 pt-2">
+                                <div className="flex items-center gap-2 p-3 bg-green-500/10 border border-green-500/20 rounded-lg">
+                                  <Icon name="Timer" size={16} className="text-green-500" />
+                                  <div className="flex-1">
+                                    <p className="text-sm font-medium text-green-600 dark:text-green-400">
+                                      Срок действия должности
+                                    </p>
+                                    <p className="text-xs text-muted-foreground">
+                                      {timeLeft > 0 ? (
+                                        <>Осталось: {daysLeft > 0 ? `${daysLeft} дн` : `${hoursLeft} ч`} • До {new Date(termEnd).toLocaleDateString('ru-RU', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}</>
+                                      ) : (
+                                        <>Истёк: {new Date(termEnd).toLocaleDateString('ru-RU')}</>
+                                      )}
+                                    </p>
+                                  </div>
+                                </div>
+                                {election.autoStart && timeToNextElection > 0 && (
+                                  <div className="flex items-center gap-2 p-3 bg-blue-500/10 border border-blue-500/20 rounded-lg">
+                                    <Icon name="CalendarClock" size={16} className="text-blue-500" />
+                                    <div className="flex-1">
+                                      <p className="text-sm font-medium text-blue-600 dark:text-blue-400">
+                                        Следующие выборы
+                                      </p>
+                                      <p className="text-xs text-muted-foreground">
+                                        Начнутся через {daysToNextElection > 0 ? `${daysToNextElection} дн` : 'менее дня'} • {new Date(nextElectionStart).toLocaleDateString('ru-RU', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}
+                                      </p>
+                                    </div>
+                                  </div>
+                                )}
+                              </div>
+                            );
+                          })()}
                           <p className="text-xs text-muted-foreground text-center pt-2">
-                            Всего голосов: {election.totalVotes} • Завершено: {new Date(election.endDate).toLocaleDateString('ru-RU')}
+                            Всего голосов: {election.totalVotes}
                           </p>
                         </div>
                       ) : (
