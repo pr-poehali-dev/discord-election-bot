@@ -78,11 +78,15 @@ const Index = () => {
       serverMemberCount: 250,
       keepOldRoles: false,
       autoStart: true,
+      retryOnFail: true,
+      maxVotingAttempts: 2,
       registrationStartDate: '2025-11-01T10:00:00',
       registrationEndDate: '2025-11-08T10:00:00',
       votingStartDate: '2025-11-08T10:00:00',
       votingEndDate: '2025-12-07T10:00:00',
       registrationAttempts: 0,
+      votingAttempts: 1,
+      userVotes: {},
       candidates: [
         { id: 'c1', name: 'AlexDev', avatar: '👨‍💻', votes: 45, speech: 'Буду модерировать честно и справедливо', registeredAt: '2025-11-02T15:30:00' },
         { id: 'c2', name: 'SarahMod', avatar: '👩‍💼', votes: 38, speech: 'Опыт модерации 3 года', registeredAt: '2025-11-03T12:00:00' },
@@ -106,9 +110,13 @@ const Index = () => {
       serverMemberCount: 250,
       keepOldRoles: true,
       autoStart: true,
+      retryOnFail: true,
+      maxVotingAttempts: 2,
       registrationStartDate: '2025-11-06T10:00:00',
       registrationEndDate: '2025-11-09T10:00:00',
       registrationAttempts: 1,
+      votingAttempts: 0,
+      userVotes: {},
       candidates: [],
       totalVotes: 0
     }
@@ -142,24 +150,60 @@ const Index = () => {
   const [editingElectionData, setEditingElectionData] = useState<string | null>(null);
 
   const handleVote = (electionId: string, candidateId: string) => {
-    setElections(prev => prev.map(election => {
-      if (election.id === electionId) {
+    const election = elections.find(e => e.id === electionId);
+    if (!election) return;
+
+    if (election.userVotes[currentUser.name]) {
+      toast({
+        title: "Ошибка",
+        description: "Вы уже проголосовали в этих выборах",
+        variant: "destructive"
+      });
+      return;
+    }
+
+    const candidate = election.candidates.find(c => c.id === candidateId);
+    if (candidate?.name === currentUser.name) {
+      toast({
+        title: "Ошибка",
+        description: "Вы не можете голосовать за себя",
+        variant: "destructive"
+      });
+      return;
+    }
+
+    const hasVoterRole = election.voterRoles.length === 0 || election.voterRoles.some(role => 
+      currentUser.roles.includes(role)
+    );
+    
+    if (!hasVoterRole) {
+      toast({
+        title: "Ошибка",
+        description: "У вас нет необходимой роли для голосования",
+        variant: "destructive"
+      });
+      return;
+    }
+
+    setElections(prev => prev.map(e => {
+      if (e.id === electionId) {
         return {
-          ...election,
-          candidates: election.candidates.map(candidate => 
-            candidate.id === candidateId 
-              ? { ...candidate, votes: candidate.votes + 1 }
-              : candidate
+          ...e,
+          candidates: e.candidates.map(c => 
+            c.id === candidateId 
+              ? { ...c, votes: c.votes + 1 }
+              : c
           ),
-          totalVotes: election.totalVotes + 1
+          totalVotes: e.totalVotes + 1,
+          userVotes: { ...e.userVotes, [currentUser.name]: candidateId }
         };
       }
-      return election;
+      return e;
     }));
     
     toast({
       title: "Голос учтён!",
-      description: "Ваш голос был успешно засчитан",
+      description: `Вы проголосовали за ${candidate?.name}`,
     });
   };
 
@@ -230,7 +274,9 @@ const Index = () => {
       daysBeforeTermEnd: election.daysBeforeTermEnd,
       minVotesThresholdPercent: election.minVotesThresholdPercent,
       keepOldRoles: election.keepOldRoles,
-      autoStart: election.autoStart
+      autoStart: election.autoStart,
+      retryOnFail: election.retryOnFail,
+      maxVotingAttempts: election.maxVotingAttempts
     });
     setEditingElectionData(electionId);
     setIsElectionDialogOpen(true);
@@ -263,7 +309,9 @@ const Index = () => {
               minVotesThresholdPercent: newElection.minVotesThresholdPercent,
               serverMemberCount,
               keepOldRoles: newElection.keepOldRoles,
-              autoStart: newElection.autoStart
+              autoStart: newElection.autoStart,
+              retryOnFail: newElection.retryOnFail,
+              maxVotingAttempts: newElection.maxVotingAttempts
             }
           : e
       ));
@@ -288,7 +336,11 @@ const Index = () => {
         serverMemberCount,
         keepOldRoles: newElection.keepOldRoles,
         autoStart: newElection.autoStart,
+        retryOnFail: newElection.retryOnFail,
+        maxVotingAttempts: newElection.maxVotingAttempts,
         registrationAttempts: 0,
+        votingAttempts: 0,
+        userVotes: {},
         candidates: [],
         totalVotes: 0
       };
@@ -311,7 +363,9 @@ const Index = () => {
       daysBeforeTermEnd: 2,
       minVotesThresholdPercent: 20,
       keepOldRoles: false,
-      autoStart: true
+      autoStart: true,
+      retryOnFail: true,
+      maxVotingAttempts: 2
     });
     setEditingElectionData(null);
     setIsElectionDialogOpen(false);
@@ -426,19 +480,43 @@ const Index = () => {
   };
 
   const removeCandidate = (electionId: string, candidateId: string) => {
-    setElections(prev => prev.map(election => {
-      if (election.id === electionId) {
+    const election = elections.find(e => e.id === electionId);
+    if (!election) return;
+
+    const candidate = election.candidates.find(c => c.id === candidateId);
+    if (!candidate) return;
+
+    if (!isAdmin && candidate.name !== currentUser.name) {
+      toast({
+        title: "Ошибка",
+        description: "Вы можете снять только свою кандидатуру",
+        variant: "destructive"
+      });
+      return;
+    }
+
+    if (election.status === 'voting') {
+      toast({
+        title: "Ошибка",
+        description: "Нельзя снять кандидатуру во время голосования",
+        variant: "destructive"
+      });
+      return;
+    }
+
+    setElections(prev => prev.map(e => {
+      if (e.id === electionId) {
         return {
-          ...election,
-          candidates: election.candidates.filter(c => c.id !== candidateId)
+          ...e,
+          candidates: e.candidates.filter(c => c.id !== candidateId)
         };
       }
-      return election;
+      return e;
     }));
     
     toast({
       title: "Кандидат удалён",
-      description: "Кандидат успешно удалён из списка",
+      description: `${candidate.name} снял свою кандидатуру`,
     });
   };
 
@@ -490,14 +568,18 @@ const Index = () => {
             ...e, 
             status: 'voting' as const,
             votingStartDate,
-            votingEndDate
+            votingEndDate,
+            votingAttempts: e.votingAttempts + 1,
+            userVotes: {},
+            candidates: e.candidates.map(c => ({ ...c, votes: 0 })),
+            totalVotes: 0
           }
         : e
     ));
     
     toast({
       title: "Голосование началось!",
-      description: `Голосование до ${new Date(votingEndDate).toLocaleString('ru-RU')}`,
+      description: `Голосование до ${new Date(votingEndDate).toLocaleString('ru-RU')} (Попытка #${election.votingAttempts + 1})`,
     });
   };
 
@@ -541,6 +623,8 @@ const Index = () => {
               candidates: [],
               totalVotes: 0,
               registrationAttempts: 0,
+              votingAttempts: 0,
+              userVotes: {},
               currentWinner: undefined,
               registrationStartDate: undefined,
               registrationEndDate: undefined,
@@ -554,24 +638,55 @@ const Index = () => {
         }, Math.max(0, nextRegistrationTime - Date.now()));
       }
     } else {
-      setElections(prev => prev.map(e => 
-        e.id === electionId 
-          ? { 
-              ...e, 
-              status: 'failed' as const,
-              currentWinner: undefined
-            }
-          : e
-      ));
-      
-      toast({
-        title: "Выборы не состоялись",
-        description: `Недостаточно голосов: ${election.totalVotes} из ${requiredVotes}`,
-        variant: "destructive"
-      });
+      if (election.retryOnFail && election.votingAttempts < election.maxVotingAttempts) {
+        toast({
+          title: "Голосование повторяется",
+          description: `Недостаточно голосов (${election.totalVotes}/${requiredVotes}). Попытка ${election.votingAttempts}/${election.maxVotingAttempts}`,
+          variant: "destructive"
+        });
+        startVoting(electionId);
+      } else if (election.retryOnFail && election.votingAttempts >= election.maxVotingAttempts) {
+        toast({
+          title: "Возврат к регистрации",
+          description: `Исчерпаны все попытки голосования (${election.maxVotingAttempts}). Начинается регистрация кандидатов`,
+          variant: "destructive"
+        });
+        
+        setElections(prev => prev.map(e => 
+          e.id === electionId 
+            ? { 
+                ...e, 
+                votingAttempts: 0,
+                userVotes: {},
+                candidates: [],
+                totalVotes: 0
+              }
+            : e
+        ));
+        
+        if (election.autoStart) {
+          startRegistration(electionId);
+        }
+      } else {
+        setElections(prev => prev.map(e => 
+          e.id === electionId 
+            ? { 
+                ...e, 
+                status: 'failed' as const,
+                currentWinner: undefined
+              }
+            : e
+        ));
+        
+        toast({
+          title: "Выборы не состоялись",
+          description: `Недостаточно голосов: ${election.totalVotes} из ${requiredVotes}`,
+          variant: "destructive"
+        });
 
-      if (election.autoStart) {
-        startRegistration(electionId);
+        if (election.autoStart) {
+          startRegistration(electionId);
+        }
       }
     }
   };
@@ -846,6 +961,35 @@ const Index = () => {
                         className="h-4 w-4 rounded border-gray-300"
                       />
                     </div>
+
+                    <div className="flex items-center justify-between">
+                      <div className="space-y-1">
+                        <Label htmlFor="retryOnFail">Повторять голосование при недостатке голосов</Label>
+                        <p className="text-xs text-muted-foreground">Если голосов меньше порога, голосование запустится снова</p>
+                      </div>
+                      <input
+                        id="retryOnFail"
+                        type="checkbox"
+                        checked={newElection.retryOnFail}
+                        onChange={(e) => setNewElection(prev => ({ ...prev, retryOnFail: e.target.checked }))}
+                        className="h-4 w-4 rounded border-gray-300"
+                      />
+                    </div>
+
+                    {newElection.retryOnFail && (
+                      <div className="grid gap-2">
+                        <Label htmlFor="maxVotingAttempts">Максимальное количество попыток голосования</Label>
+                        <Input
+                          id="maxVotingAttempts"
+                          type="number"
+                          min="1"
+                          max="10"
+                          value={newElection.maxVotingAttempts}
+                          onChange={(e) => setNewElection(prev => ({ ...prev, maxVotingAttempts: parseInt(e.target.value) || 1 }))}
+                        />
+                        <p className="text-xs text-muted-foreground">После исчерпания попыток вернуться к регистрации кандидатов</p>
+                      </div>
+                    )}
                   </div>
                 </div>
                 <Button onClick={createElection} className="w-full">
@@ -970,13 +1114,22 @@ const Index = () => {
                         <div className="flex-1">
                           <p className="text-sm font-medium text-blue-600 dark:text-blue-400">Регистрация кандидатов</p>
                           <p className="text-xs text-muted-foreground">
-                            {election.candidates.length} кандидатов • Попытка #{election.registrationAttempts}
+                            {election.candidates.length} кандидатов • Попытка регистрации #{election.registrationAttempts}
                           </p>
                         </div>
                         <Button size="sm" onClick={() => startVoting(election.id)} disabled={election.candidates.length === 0}>
                           <Icon name="Play" size={14} className="mr-1" />
                           Запустить голосование
                         </Button>
+                      </div>
+                    )}
+                    {election.status === 'voting' && election.votingAttempts > 0 && (
+                      <div className="flex items-center gap-2 p-3 bg-purple-500/10 border border-purple-500/20 rounded-lg">
+                        <Icon name="RefreshCw" size={16} className="text-purple-500" />
+                        <p className="text-sm text-purple-600 dark:text-purple-400">
+                          Попытка голосования {election.votingAttempts}/{election.maxVotingAttempts}
+                          {election.retryOnFail && election.votingAttempts < election.maxVotingAttempts && ' • При недостатке голосов будет повторная попытка'}
+                        </p>
                       </div>
                     )}
                     {election.candidates.map((candidate) => {
@@ -1002,9 +1155,17 @@ const Index = () => {
                                 size="sm"
                                 onClick={() => handleVote(election.id, candidate.id)}
                                 className="gap-2"
+                                disabled={
+                                  !!election.userVotes[currentUser.name] || 
+                                  candidate.name === currentUser.name
+                                }
                               >
                                 <Icon name="ThumbsUp" size={16} />
-                                Голосовать
+                                {election.userVotes[currentUser.name] === candidate.id 
+                                  ? 'Вы проголосовали' 
+                                  : candidate.name === currentUser.name 
+                                  ? 'Это вы' 
+                                  : 'Голосовать'}
                               </Button>
                             )}
                           </div>
@@ -1012,6 +1173,17 @@ const Index = () => {
                             <p className="text-sm text-muted-foreground italic pl-12">"{candidate.speech}"</p>
                           )}
                           {election.status === 'voting' && <Progress value={percentage} className="h-2" />}
+                          {election.status === 'registration' && (isAdmin || candidate.name === currentUser.name) && (
+                            <Button 
+                              variant="ghost" 
+                              size="sm" 
+                              onClick={() => removeCandidate(election.id, candidate.id)}
+                              className="text-destructive hover:text-destructive"
+                            >
+                              <Icon name="X" size={14} className="mr-1" />
+                              Снять кандидатуру
+                            </Button>
+                          )}
                         </div>
                       );
                     })}
