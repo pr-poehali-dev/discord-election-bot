@@ -30,6 +30,7 @@ interface Election {
   duration: number;
   registrationDuration: number;
   termDuration: number;
+  daysBeforeTermEnd: number;
   minVotesThresholdPercent: number;
   serverMemberCount: number;
   keepOldRoles: boolean;
@@ -38,6 +39,7 @@ interface Election {
   registrationEndDate?: string;
   votingStartDate?: string;
   votingEndDate?: string;
+  termEndDate?: string;
   currentWinner?: string;
   registrationAttempts: number;
   candidates: Candidate[];
@@ -65,6 +67,7 @@ const Index = () => {
       duration: 720,
       registrationDuration: 168,
       termDuration: 720,
+      daysBeforeTermEnd: 2,
       minVotesThresholdPercent: 20,
       serverMemberCount: 250,
       keepOldRoles: false,
@@ -92,6 +95,7 @@ const Index = () => {
       duration: 336,
       registrationDuration: 72,
       termDuration: 336,
+      daysBeforeTermEnd: 2,
       minVotesThresholdPercent: 15,
       serverMemberCount: 250,
       keepOldRoles: true,
@@ -113,6 +117,7 @@ const Index = () => {
     duration: 720,
     registrationDuration: 168,
     termDuration: 720,
+    daysBeforeTermEnd: 2,
     minVotesThresholdPercent: 20,
     keepOldRoles: false,
     autoStart: true
@@ -219,6 +224,7 @@ const Index = () => {
       duration: newElection.duration,
       registrationDuration: newElection.registrationDuration,
       termDuration: newElection.termDuration,
+      daysBeforeTermEnd: newElection.daysBeforeTermEnd,
       minVotesThresholdPercent: newElection.minVotesThresholdPercent,
       serverMemberCount,
       keepOldRoles: newElection.keepOldRoles,
@@ -238,6 +244,7 @@ const Index = () => {
       duration: 720,
       registrationDuration: 168,
       termDuration: 720,
+      daysBeforeTermEnd: 2,
       minVotesThresholdPercent: 20,
       keepOldRoles: false,
       autoStart: true
@@ -403,27 +410,71 @@ const Index = () => {
     const requiredVotes = Math.ceil(election.serverMemberCount * election.minVotesThresholdPercent / 100);
     const winner = election.candidates.sort((a, b) => b.votes - a.votes)[0];
 
-    setElections(prev => prev.map(e => 
-      e.id === electionId 
-        ? { 
-            ...e, 
-            status: election.totalVotes >= requiredVotes ? 'completed' as const : 'failed' as const,
-            currentWinner: election.totalVotes >= requiredVotes ? winner?.name : undefined
-          }
-        : e
-    ));
-    
     if (election.totalVotes >= requiredVotes) {
+      const termEndDate = new Date(Date.now() + election.termDuration * 60 * 60 * 1000).toISOString();
+      
+      setElections(prev => prev.map(e => 
+        e.id === electionId 
+          ? { 
+              ...e, 
+              status: 'completed' as const,
+              currentWinner: winner?.name,
+              termEndDate
+            }
+          : e
+      ));
+      
       toast({
         title: "Выборы завершены!",
         description: `Победитель: ${winner.name} с ${winner.votes} голосами`,
       });
+
+      if (election.autoStart) {
+        const daysBeforeInMs = election.daysBeforeTermEnd * 24 * 60 * 60 * 1000;
+        const nextRegistrationTime = Date.now() + (election.termDuration * 60 * 60 * 1000) - daysBeforeInMs;
+        
+        setTimeout(() => {
+          const currentElection = elections.find(e => e.id === electionId);
+          if (currentElection && currentElection.autoStart) {
+            const newElectionData: Election = {
+              ...currentElection,
+              id: Date.now().toString(),
+              status: 'scheduled',
+              candidates: [],
+              totalVotes: 0,
+              registrationAttempts: 0,
+              currentWinner: undefined,
+              registrationStartDate: undefined,
+              registrationEndDate: undefined,
+              votingStartDate: undefined,
+              votingEndDate: undefined,
+              termEndDate: undefined
+            };
+            setElections(prev => [...prev, newElectionData]);
+            startRegistration(newElectionData.id);
+          }
+        }, Math.max(0, nextRegistrationTime - Date.now()));
+      }
     } else {
+      setElections(prev => prev.map(e => 
+        e.id === electionId 
+          ? { 
+              ...e, 
+              status: 'failed' as const,
+              currentWinner: undefined
+            }
+          : e
+      ));
+      
       toast({
         title: "Выборы не состоялись",
         description: `Недостаточно голосов: ${election.totalVotes} из ${requiredVotes}`,
         variant: "destructive"
       });
+
+      if (election.autoStart) {
+        startRegistration(electionId);
+      }
     }
   };
 
@@ -627,6 +678,18 @@ const Index = () => {
                     </div>
 
                     <div className="grid gap-2">
+                      <Label htmlFor="daysBeforeTermEnd">За сколько дней до окончания открыть регистрацию</Label>
+                      <Input
+                        id="daysBeforeTermEnd"
+                        type="number"
+                        min="0"
+                        value={newElection.daysBeforeTermEnd}
+                        onChange={(e) => setNewElection(prev => ({ ...prev, daysBeforeTermEnd: parseInt(e.target.value) || 0 }))}
+                      />
+                      <p className="text-xs text-muted-foreground">За сколько дней до истечения срока автоматически начать новые выборы</p>
+                    </div>
+
+                    <div className="grid gap-2">
                       <Label htmlFor="minVotesThresholdPercent">Минимум голосов от участников сервера (%)</Label>
                       <Input
                         id="minVotesThresholdPercent"
@@ -655,8 +718,8 @@ const Index = () => {
 
                     <div className="flex items-center justify-between">
                       <div className="space-y-1">
-                        <Label htmlFor="keepOldRoles">Сохранять старые роли до назначения нового</Label>
-                        <p className="text-xs text-muted-foreground">Предыдущий владелец роли не потеряет её сразу</p>
+                        <Label htmlFor="keepOldRoles">Сохранять роли старого участника до назначения нового</Label>
+                        <p className="text-xs text-muted-foreground">Пока не будет выбран новый победитель, старый сохранит свои роли</p>
                       </div>
                       <input
                         id="keepOldRoles"
