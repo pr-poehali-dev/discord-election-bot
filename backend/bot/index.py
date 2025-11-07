@@ -17,10 +17,15 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         return cors_response()
     
     headers = event.get('headers', {})
+    headers_lower = {k.lower(): v for k, v in headers.items()}
     
-    if 'x-signature-ed25519' in headers:
+    print(f"Request: method={method}, headers={list(headers_lower.keys())[:5]}")
+    
+    if 'x-signature-ed25519' in headers_lower or 'x-signature-timestamp' in headers_lower:
+        print("Detected Discord request")
         return handle_discord_interaction(event)
     else:
+        print("Detected API request")
         return handle_api_request(event)
 
 def cors_response():
