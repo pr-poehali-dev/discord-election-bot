@@ -54,6 +54,8 @@ interface CandidateForm {
 
 const Index = () => {
   const [serverMemberCount, setServerMemberCount] = useState(250);
+  const [isAdmin, setIsAdmin] = useState(true);
+  const [currentUser, setCurrentUser] = useState({ name: 'Admin', avatar: '👤', roles: ['@Администратор'] });
 
   const [elections, setElections] = useState<Election[]>([
     {
@@ -129,6 +131,7 @@ const Index = () => {
   const [candidateForm, setCandidateForm] = useState<CandidateForm>({ name: '', avatar: '', speech: '' });
   const [editingElectionId, setEditingElectionId] = useState<string | null>(null);
   const [isCandidateDialogOpen, setIsCandidateDialogOpen] = useState(false);
+  const [isAdminMode, setIsAdminMode] = useState(false);
 
   const handleVote = (electionId: string, candidateId: string) => {
     setElections(prev => prev.map(election => {
@@ -279,15 +282,6 @@ const Index = () => {
   };
 
   const addCandidate = () => {
-    if (!candidateForm.name.trim()) {
-      toast({
-        title: "Ошибка",
-        description: "Введите имя кандидата",
-        variant: "destructive"
-      });
-      return;
-    }
-
     if (!candidateForm.speech.trim()) {
       toast({
         title: "Ошибка",
@@ -299,10 +293,55 @@ const Index = () => {
 
     if (!editingElectionId) return;
 
+    const election = elections.find(e => e.id === editingElectionId);
+    if (!election) return;
+
+    let candidateName: string;
+    let candidateAvatar: string;
+
+    if (isAdminMode && isAdmin) {
+      if (!candidateForm.name.trim()) {
+        toast({
+          title: "Ошибка",
+          description: "Введите имя кандидата",
+          variant: "destructive"
+        });
+        return;
+      }
+      candidateName = candidateForm.name;
+      candidateAvatar = candidateForm.avatar || '👤';
+    } else {
+      const hasRequiredRole = election.candidateRoles.some(role => 
+        currentUser.roles.includes(role)
+      );
+      
+      if (!hasRequiredRole) {
+        toast({
+          title: "Ошибка",
+          description: "У вас нет необходимой роли для выдвижения кандидатуры",
+          variant: "destructive"
+        });
+        return;
+      }
+
+      const alreadyCandidate = election.candidates.some(c => c.name === currentUser.name);
+      if (alreadyCandidate) {
+        toast({
+          title: "Ошибка",
+          description: "Вы уже зарегистрированы как кандидат",
+          variant: "destructive"
+        });
+        return;
+      }
+
+      candidateName = currentUser.name;
+      candidateAvatar = currentUser.avatar;
+    }
+
     const newCandidate: Candidate = {
       id: Date.now().toString(),
-      name: candidateForm.name,
-      avatar: candidateForm.avatar || '👤',
+      name: candidateName,
+      avatar: candidateAvatar,
       speech: candidateForm.speech,
       registeredAt: new Date().toISOString(),
       votes: 0
@@ -320,6 +359,7 @@ const Index = () => {
 
     setCandidateForm({ name: '', avatar: '', speech: '' });
     setIsCandidateDialogOpen(false);
+    setIsAdminMode(false);
     
     toast({
       title: "Кандидат добавлен!",
@@ -739,6 +779,40 @@ const Index = () => {
           </div>
         </div>
 
+        <div className="mb-6 flex items-center justify-between">
+          <div className="flex items-center gap-4">
+            <div className="flex items-center gap-2">
+              <span className="text-sm text-muted-foreground">Текущий пользователь:</span>
+              <Badge variant="outline" className="gap-2">
+                <span>{currentUser.avatar}</span>
+                <span>{currentUser.name}</span>
+              </Badge>
+            </div>
+            {isAdmin && (
+              <Badge variant="secondary" className="gap-1">
+                <Icon name="ShieldCheck" size={14} />
+                Админ
+              </Badge>
+            )}
+          </div>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => {
+              const isCurrentlyAdmin = !isAdmin;
+              setIsAdmin(isCurrentlyAdmin);
+              setCurrentUser({
+                name: isCurrentlyAdmin ? 'Admin' : 'Пользователь123',
+                avatar: isCurrentlyAdmin ? '👤' : '👨‍💻',
+                roles: isCurrentlyAdmin ? ['@Администратор'] : ['@Проверенный', '@Участник']
+              });
+            }}
+          >
+            <Icon name="Users" size={14} className="mr-2" />
+            Переключить пользователя
+          </Button>
+        </div>
+
         <Tabs defaultValue="active" className="w-full">
           <TabsList className="grid w-full max-w-md grid-cols-3 mb-6">
             <TabsTrigger value="active">Активные</TabsTrigger>
@@ -884,44 +958,93 @@ const Index = () => {
                         )}
                         <Dialog open={isCandidateDialogOpen && editingElectionId === election.id} onOpenChange={(open) => {
                           setIsCandidateDialogOpen(open);
-                          if (open) setEditingElectionId(election.id);
-                          else {
+                          if (open) {
+                            setEditingElectionId(election.id);
+                            setIsAdminMode(false);
+                          } else {
                             setEditingElectionId(null);
                             setCandidateForm({ name: '', avatar: '', speech: '' });
+                            setIsAdminMode(false);
                           }
                         }}>
                           <DialogTrigger asChild>
                             <Button size="sm" variant="outline">
                               <Icon name="UserPlus" size={14} className="mr-1" />
-                              Добавить кандидата
+                              {election.status === 'registration' ? 'Выдвинуть кандидатуру' : 'Добавить кандидата'}
                             </Button>
                           </DialogTrigger>
                           <DialogContent>
                             <DialogHeader>
-                              <DialogTitle>Добавить кандидата</DialogTitle>
+                              <DialogTitle>
+                                {isAdminMode ? 'Добавить кандидата (режим админа)' : 'Выдвинуть свою кандидатуру'}
+                              </DialogTitle>
                               <DialogDescription>
-                                Укажите имя кандидата и предвыборную речь
+                                {isAdminMode 
+                                  ? 'Добавьте любого участника в качестве кандидата'
+                                  : `Вы выдвигаете себя (${currentUser.name}) в качестве кандидата`
+                                }
                               </DialogDescription>
                             </DialogHeader>
                             <div className="space-y-4">
-                              <div className="grid gap-2">
-                                <Label htmlFor="candidate-name">Имя кандидата</Label>
-                                <Input
-                                  id="candidate-name"
-                                  placeholder="Например: Иван Петров"
-                                  value={candidateForm.name}
-                                  onChange={(e) => setCandidateForm(prev => ({ ...prev, name: e.target.value }))}
-                                />
-                              </div>
-                              <div className="grid gap-2">
-                                <Label htmlFor="candidate-avatar">Эмодзи (опционально)</Label>
-                                <Input
-                                  id="candidate-avatar"
-                                  placeholder="👤"
-                                  value={candidateForm.avatar}
-                                  onChange={(e) => setCandidateForm(prev => ({ ...prev, avatar: e.target.value }))}
-                                />
-                              </div>
+                              {isAdmin && (
+                                <div className="flex items-center justify-between p-3 bg-muted rounded-lg">
+                                  <Label htmlFor="admin-mode" className="cursor-pointer">
+                                    Режим администратора (добавить другого участника)
+                                  </Label>
+                                  <input
+                                    id="admin-mode"
+                                    type="checkbox"
+                                    checked={isAdminMode}
+                                    onChange={(e) => {
+                                      setIsAdminMode(e.target.checked);
+                                      if (!e.target.checked) {
+                                        setCandidateForm(prev => ({ ...prev, name: '', avatar: '' }));
+                                      }
+                                    }}
+                                    className="h-4 w-4 rounded border-gray-300"
+                                  />
+                                </div>
+                              )}
+                              
+                              {isAdminMode && isAdmin && (
+                                <>
+                                  <div className="grid gap-2">
+                                    <Label htmlFor="candidate-name">Имя кандидата *</Label>
+                                    <Input
+                                      id="candidate-name"
+                                      placeholder="Например: Иван Петров"
+                                      value={candidateForm.name}
+                                      onChange={(e) => setCandidateForm(prev => ({ ...prev, name: e.target.value }))}
+                                    />
+                                  </div>
+                                  <div className="grid gap-2">
+                                    <Label htmlFor="candidate-avatar">Эмодзи (опционально)</Label>
+                                    <Input
+                                      id="candidate-avatar"
+                                      placeholder="👤"
+                                      value={candidateForm.avatar}
+                                      onChange={(e) => setCandidateForm(prev => ({ ...prev, avatar: e.target.value }))}
+                                    />
+                                  </div>
+                                </>
+                              )}
+                              
+                              {!isAdminMode && (
+                                <div className="p-4 bg-blue-500/10 border border-blue-500/20 rounded-lg">
+                                  <div className="flex items-center gap-3">
+                                    <span className="text-3xl">{currentUser.avatar}</span>
+                                    <div>
+                                      <p className="font-medium">{currentUser.name}</p>
+                                      <div className="flex flex-wrap gap-1 mt-1">
+                                        {currentUser.roles.map(role => (
+                                          <Badge key={role} variant="outline" className="text-xs">{role}</Badge>
+                                        ))}
+                                      </div>
+                                    </div>
+                                  </div>
+                                </div>
+                              )}
+                              
                               <div className="grid gap-2">
                                 <Label htmlFor="candidate-speech">Предвыборная речь *</Label>
                                 <textarea
@@ -933,7 +1056,7 @@ const Index = () => {
                                 />
                               </div>
                               <Button onClick={addCandidate} className="w-full">
-                                Добавить
+                                {isAdminMode ? 'Добавить кандидата' : 'Выдвинуть свою кандидатуру'}
                               </Button>
                             </div>
                           </DialogContent>
