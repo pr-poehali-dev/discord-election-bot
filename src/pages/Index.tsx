@@ -30,6 +30,11 @@ interface Election {
   totalVotes: number;
 }
 
+interface CandidateForm {
+  name: string;
+  avatar: string;
+}
+
 const Index = () => {
   const [elections, setElections] = useState<Election[]>([
     {
@@ -75,6 +80,9 @@ const Index = () => {
 
   const [roleInput, setRoleInput] = useState('');
   const [voterRoleInput, setVoterRoleInput] = useState('');
+  const [candidateForm, setCandidateForm] = useState<CandidateForm>({ name: '', avatar: '' });
+  const [editingElectionId, setEditingElectionId] = useState<string | null>(null);
+  const [isCandidateDialogOpen, setIsCandidateDialogOpen] = useState(false);
 
   const handleVote = (electionId: string, candidateId: string) => {
     setElections(prev => prev.map(election => {
@@ -180,6 +188,84 @@ const Index = () => {
       case 'scheduled': return 'Запланировано';
       default: return status;
     }
+  };
+
+  const addCandidate = () => {
+    if (!candidateForm.name.trim()) {
+      toast({
+        title: "Ошибка",
+        description: "Введите имя кандидата",
+        variant: "destructive"
+      });
+      return;
+    }
+
+    if (!editingElectionId) return;
+
+    const newCandidate: Candidate = {
+      id: Date.now().toString(),
+      name: candidateForm.name,
+      avatar: candidateForm.avatar || '👤',
+      votes: 0
+    };
+
+    setElections(prev => prev.map(election => {
+      if (election.id === editingElectionId) {
+        return {
+          ...election,
+          candidates: [...election.candidates, newCandidate]
+        };
+      }
+      return election;
+    }));
+
+    setCandidateForm({ name: '', avatar: '' });
+    setIsCandidateDialogOpen(false);
+    
+    toast({
+      title: "Кандидат добавлен!",
+      description: `${newCandidate.name} успешно добавлен в список`,
+    });
+  };
+
+  const removeCandidate = (electionId: string, candidateId: string) => {
+    setElections(prev => prev.map(election => {
+      if (election.id === electionId) {
+        return {
+          ...election,
+          candidates: election.candidates.filter(c => c.id !== candidateId)
+        };
+      }
+      return election;
+    }));
+    
+    toast({
+      title: "Кандидат удалён",
+      description: "Кандидат успешно удалён из списка",
+    });
+  };
+
+  const startElection = (electionId: string) => {
+    const election = elections.find(e => e.id === electionId);
+    if (!election || election.candidates.length < 2) {
+      toast({
+        title: "Ошибка",
+        description: "Добавьте минимум 2 кандидатов для запуска выборов",
+        variant: "destructive"
+      });
+      return;
+    }
+
+    setElections(prev => prev.map(e => 
+      e.id === electionId 
+        ? { ...e, status: 'active' as const }
+        : e
+    ));
+    
+    toast({
+      title: "Выборы запущены!",
+      description: "Голосование началось",
+    });
   };
 
   return (
@@ -448,10 +534,87 @@ const Index = () => {
                       </div>
                     </div>
                   </CardHeader>
-                  <CardContent>
-                    <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                      <Icon name="Info" size={16} />
-                      <span>Добавьте кандидатов для запуска выборов</span>
+                  <CardContent className="space-y-4">
+                    {election.candidates.length === 0 ? (
+                      <div className="flex items-center gap-2 text-sm text-muted-foreground mb-4">
+                        <Icon name="Info" size={16} />
+                        <span>Добавьте кандидатов для запуска выборов</span>
+                      </div>
+                    ) : (
+                      <div className="space-y-2">
+                        <p className="text-sm font-medium">Кандидаты ({election.candidates.length}):</p>
+                        <div className="space-y-2">
+                          {election.candidates.map((candidate) => (
+                            <div key={candidate.id} className="flex items-center justify-between p-3 bg-muted rounded-lg">
+                              <div className="flex items-center gap-3">
+                                <span className="text-2xl">{candidate.avatar}</span>
+                                <span className="font-medium">{candidate.name}</span>
+                              </div>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                onClick={() => removeCandidate(election.id, candidate.id)}
+                              >
+                                <Icon name="Trash2" size={16} />
+                              </Button>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                    <div className="flex gap-2">
+                      <Dialog open={isCandidateDialogOpen && editingElectionId === election.id} onOpenChange={(open) => {
+                        setIsCandidateDialogOpen(open);
+                        if (open) setEditingElectionId(election.id);
+                        else {
+                          setEditingElectionId(null);
+                          setCandidateForm({ name: '', avatar: '' });
+                        }
+                      }}>
+                        <DialogTrigger asChild>
+                          <Button variant="outline" className="flex-1">
+                            <Icon name="UserPlus" size={16} className="mr-2" />
+                            Добавить кандидата
+                          </Button>
+                        </DialogTrigger>
+                        <DialogContent>
+                          <DialogHeader>
+                            <DialogTitle>Добавить кандидата</DialogTitle>
+                            <DialogDescription>
+                              Укажите имя кандидата и эмодзи (опционально)
+                            </DialogDescription>
+                          </DialogHeader>
+                          <div className="space-y-4">
+                            <div className="grid gap-2">
+                              <Label htmlFor="candidate-name">Имя кандидата</Label>
+                              <Input
+                                id="candidate-name"
+                                placeholder="Например: Иван Петров"
+                                value={candidateForm.name}
+                                onChange={(e) => setCandidateForm(prev => ({ ...prev, name: e.target.value }))}
+                              />
+                            </div>
+                            <div className="grid gap-2">
+                              <Label htmlFor="candidate-avatar">Эмодзи (опционально)</Label>
+                              <Input
+                                id="candidate-avatar"
+                                placeholder="👤"
+                                value={candidateForm.avatar}
+                                onChange={(e) => setCandidateForm(prev => ({ ...prev, avatar: e.target.value }))}
+                              />
+                            </div>
+                            <Button onClick={addCandidate} className="w-full">
+                              Добавить
+                            </Button>
+                          </div>
+                        </DialogContent>
+                      </Dialog>
+                      {election.candidates.length >= 2 && (
+                        <Button onClick={() => startElection(election.id)} className="flex-1">
+                          <Icon name="Play" size={16} className="mr-2" />
+                          Запустить выборы
+                        </Button>
+                      )}
                     </div>
                   </CardContent>
                 </Card>
