@@ -182,19 +182,19 @@ const Index = () => {
   };
 
   const addVoterRole = () => {
-    if (candidateRoleInput.trim() && !newElection.candidateRoles.includes(candidateRoleInput.trim())) {
+    if (voterRoleInput.trim() && !newElection.voterRoles.includes(voterRoleInput.trim())) {
       setNewElection(prev => ({
         ...prev,
-        candidateRoles: [...prev.candidateRoles, candidateRoleInput.trim()]
+        voterRoles: [...prev.voterRoles, voterRoleInput.trim()]
       }));
-      setCandidateRoleInput('');
+      setVoterRoleInput('');
     }
   };
 
-  const removeCandidateRole = (role: string) => {
+  const removeVoterRole = (role: string) => {
     setNewElection(prev => ({
       ...prev,
-      candidateRoles: prev.candidateRoles.filter(r => r !== role)
+      voterRoles: prev.voterRoles.filter(r => r !== role)
     }));
   };
 
